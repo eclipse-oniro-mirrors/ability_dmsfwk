@@ -23,7 +23,7 @@ ErrCode AbilityManagerClient::Connect()
 }
 
 ErrCode AbilityManagerClient::GetMissionInfo(const std::string& deviceId, int32_t missionId,
-    MissionInfo &missionInfo)
+    MissionInfo &missionInfo, int32_t userId)
 {
     return IAbilityManagerClient::clientMock->GetMissionInfo(deviceId, missionId, missionInfo);
 }
@@ -39,7 +39,7 @@ int32_t AbilityManagerClient::GetAbilityStateByPersistentId(int32_t persistentId
     return IAbilityManagerClient::clientMock->GetAbilityStateByPersistentId(persistentId, state);
 }
 
-ErrCode AbilityManagerClient::CleanMission(int32_t missionId)
+ErrCode AbilityManagerClient::CleanMission(int32_t missionId, int32_t userId)
 {
     return IAbilityManagerClient::clientMock->CleanMission(missionId);
 }
@@ -51,17 +51,17 @@ ErrCode AbilityManagerClient::StartAbility(const Want &want, int requestCode, in
 }
 
 ErrCode AbilityManagerClient::GetMissionInfos(const std::string& deviceId, int32_t numMax,
-    std::vector<MissionInfo> &missionInfos)
+    std::vector<MissionInfo> &missionInfos, int32_t userId)
 {
     return IAbilityManagerClient::clientMock->GetMissionInfos(deviceId, numMax, missionInfos);
 }
 
-ErrCode AbilityManagerClient::RegisterMissionListener(sptr<IMissionListener> listener)
+ErrCode AbilityManagerClient::RegisterMissionListener(sptr<IMissionListener> listener, int32_t userId)
 {
     return IAbilityManagerClient::clientMock->RegisterMissionListener(listener);
 }
 
-ErrCode AbilityManagerClient::UnRegisterMissionListener(sptr<IMissionListener> listener)
+ErrCode AbilityManagerClient::UnRegisterMissionListener(sptr<IMissionListener> listener, int32_t userId)
 {
     return IAbilityManagerClient::clientMock->UnRegisterMissionListener(listener);
 }
