@@ -41,6 +41,7 @@
 #ifdef EFFICIENCY_MANAGER_ENABLE
 #include "res_type.h"
 #include "res_sched_client.h"
+#include "nlohmann/json.hpp"
 #endif
 
 #include "ability_connection_wrapper_stub.h"
