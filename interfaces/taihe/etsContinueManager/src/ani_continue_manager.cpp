@@ -73,9 +73,13 @@ void AniContinueManager::UpdateCallbackStub(const std::string &key,
         return;
     }
 
-    ani_ref oldCallbackRef = cacheStubEntry->second->callbackData_.callbackRef;
+    ani_ref oldCallbackRef;
+    {
+        std::lock_guard<std::recursive_mutex> stubLock(cacheStubEntry->second->stubMutex_);
+        oldCallbackRef = cacheStubEntry->second->callbackData_.callbackRef;
+        cacheStubEntry->second->callbackData_.callbackRef = stub->callbackData_.callbackRef;
+    }
     ReleaseOldCallbackRef(oldCallbackRef);
-    cacheStubEntry->second->callbackData_.callbackRef = stub->callbackData_.callbackRef;
 }
 
 int32_t AniContinueManager::OnContinueStateCallback(uintptr_t context, uintptr_t opq)
