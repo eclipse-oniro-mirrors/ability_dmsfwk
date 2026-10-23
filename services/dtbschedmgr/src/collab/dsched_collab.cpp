@@ -206,16 +206,20 @@ int32_t DSchedCollab::Init()
 int32_t DSchedCollab::UnInit()
 {
     HILOGI("called");
-    std::lock_guard<std::mutex> lock(eventMutex_);
-    if ((eventHandler_ != nullptr) && (eventHandler_->GetEventRunner() != nullptr)) {
-        eventHandler_->GetEventRunner()->Stop();
+    std::shared_ptr<DSchedCollabEventHandler> handler;
+    {
+        std::lock_guard<std::mutex> lock(eventMutex_);
+        handler = eventHandler_;
+        eventHandler_ = nullptr;
+    }
+    if (handler != nullptr && handler->GetEventRunner() != nullptr) {
+        handler->GetEventRunner()->Stop();
     }
     if (eventThread_.joinable()) {
         HILOGI("start calling join");
         eventThread_.join();
         HILOGI("call join completed");
     }
-    eventHandler_ = nullptr;
     HILOGI("end");
     return ERR_OK;
 }
@@ -241,6 +245,7 @@ void DSchedCollab::StartEventHandler()
 int32_t DSchedCollab::PostSrcGetPeerVersionTask()
 {
     HILOGI("called");
+    std::lock_guard<std::mutex> lock(eventMutex_);
     if (eventHandler_ == nullptr) {
         HILOGE("eventHandler is nullptr");
         return INVALID_PARAMETERS_ERR;
@@ -257,6 +262,7 @@ int32_t DSchedCollab::PostSrcGetPeerVersionTask()
 int32_t DSchedCollab::PostSrcGetVersionTask()
 {
     HILOGI("called");
+    std::lock_guard<std::mutex> lock(eventMutex_);
     if (eventHandler_ == nullptr) {
         HILOGE("eventHandler is nullptr");
         return INVALID_PARAMETERS_ERR;
@@ -273,6 +279,7 @@ int32_t DSchedCollab::PostSrcGetVersionTask()
 int32_t DSchedCollab::PostSrcStartTask()
 {
     HILOGI("called");
+    std::lock_guard<std::mutex> lock(eventMutex_);
     if (eventHandler_ == nullptr) {
         HILOGE("eventHandler is nullptr");
         return INVALID_PARAMETERS_ERR;
@@ -289,6 +296,7 @@ int32_t DSchedCollab::PostSrcStartTask()
 int32_t DSchedCollab::PostSinkGetVersionTask()
 {
     HILOGI("called");
+    std::lock_guard<std::mutex> lock(eventMutex_);
     if (eventHandler_ == nullptr) {
         HILOGE("eventHandler is nullptr");
         return INVALID_PARAMETERS_ERR;
@@ -305,6 +313,7 @@ int32_t DSchedCollab::PostSinkGetVersionTask()
 int32_t DSchedCollab::PostSinkStartTask(const std::string &peerDeviceId)
 {
     HILOGI("called");
+    std::lock_guard<std::mutex> lock(eventMutex_);
     if (eventHandler_ == nullptr) {
         HILOGE("eventHandler is nullptr");
         return INVALID_PARAMETERS_ERR;
@@ -322,6 +331,7 @@ int32_t DSchedCollab::PostSinkStartTask(const std::string &peerDeviceId)
 int32_t DSchedCollab::PostSinkPrepareResultTask(const int32_t &result, const DSchedCollabInfo &dSchedCollabInfo)
 {
     HILOGI("called");
+    std::lock_guard<std::mutex> lock(eventMutex_);
     if (eventHandler_ == nullptr) {
         HILOGE("eventHandler is nullptr");
         return INVALID_PARAMETERS_ERR;
@@ -345,6 +355,7 @@ int32_t DSchedCollab::PostSinkPrepareResultTask(const int32_t &result, const DSc
 
 int32_t DSchedCollab::PostSrcResultTask(std::shared_ptr<NotifyResultCmd> notifyResultCmd)
 {
+    std::lock_guard<std::mutex> lock(eventMutex_);
     HILOGI("called, collabInfo %{public}s", collabInfo_.ToString().c_str());
     if (eventHandler_ == nullptr) {
         HILOGE("eventHandler is nullptr");
@@ -406,6 +417,7 @@ int32_t DSchedCollab::PostErrEndTask(const int32_t &result)
 int32_t DSchedCollab::PostAbilityRejectTask(const std::string &reason)
 {
     HILOGI("called, reason: %{public}s", reason.c_str());
+    std::lock_guard<std::mutex> lock(eventMutex_);
     if (eventHandler_ == nullptr) {
         HILOGE("eventHandler is nullptr");
         return INVALID_PARAMETERS_ERR;
