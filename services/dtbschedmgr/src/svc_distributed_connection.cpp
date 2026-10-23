@@ -264,10 +264,7 @@ static void UpdateResourceMap(const std::string &resourcePath)
         cJSON_Delete(json);
         return;
     }
-    {
-        std::lock_guard<std::mutex> lock(g_resourceMutex);
-        g_resourceMap.clear();
-    }
+    std::map<std::string, std::string> tmpMap;
     cJSON *resJsonEach = nullptr;
     cJSON_ArrayForEach(resJsonEach, resJson) {
         cJSON *key = cJSON_GetObjectItemCaseSensitive(resJsonEach, KEY_NAME);
@@ -282,10 +279,13 @@ static void UpdateResourceMap(const std::string &resourcePath)
             cJSON_Delete(json);
             return;
         }
-        std::lock_guard<std::mutex> lock(g_resourceMutex);
-        g_resourceMap.insert(std::pair<std::string, std::string>(key->valuestring, value->valuestring));
+        tmpMap.emplace(key->valuestring, value->valuestring);
     }
     cJSON_Delete(json);
+    {
+        std::lock_guard<std::mutex> lock(g_resourceMutex);
+        g_resourceMap.swap(tmpMap);
+    }
 }
 
 static std::string GetLanguageFilePath(const std::string &sysLanguage, const std::string &sysRegion)

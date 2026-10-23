@@ -325,38 +325,41 @@ int32_t MultiUserManager::CreateNewRecomMgrLocked(int32_t accountId)
 // LCOV_EXCL_START
 std::shared_ptr<DMSContinueSendMgr> MultiUserManager::GetCurrentSendMgr()
 {
-    HILOGI("userId: %{public}d.", currentUserId_.load());
+    int32_t userId = currentUserId_.load();
+    HILOGI("userId: %{public}d.", userId);
     std::lock_guard<std::mutex> lock(sendMutex_);
-    if (sendMgrMap_.empty() || sendMgrMap_.find(currentUserId_.load()) == sendMgrMap_.end()) {
+    if (sendMgrMap_.empty() || sendMgrMap_.find(userId) == sendMgrMap_.end()) {
         HILOGI("sendMgr need to create.");
-        CreateNewSendMgrLocked();
+        CreateNewSendMgrLocked(userId);
     }
-    auto cur = sendMgrMap_.find(currentUserId_.load());
+    auto cur = sendMgrMap_.find(userId);
     return cur->second;
 }
 
 std::shared_ptr<DMSContinueRecvMgr> MultiUserManager::GetCurrentRecvMgr()
 {
-    HILOGI("GetCurrentRecvMgr. userId: %{public}d.", currentUserId_.load());
+    int32_t userId = currentUserId_.load();
+    HILOGI("GetCurrentRecvMgr. userId: %{public}d.", userId);
     std::lock_guard<std::mutex> lock(recvMutex_);
-    if (recvMgrMap_.empty() || recvMgrMap_.find(currentUserId_.load()) == recvMgrMap_.end()) {
+    if (recvMgrMap_.empty() || recvMgrMap_.find(userId) == recvMgrMap_.end()) {
         HILOGI("recvMgr need to create.");
-        CreateNewRecvMgrLocked();
+        CreateNewRecvMgrLocked(userId);
     }
-    auto cur = recvMgrMap_.find(currentUserId_.load());
+    auto cur = recvMgrMap_.find(userId);
     return cur->second;
 }
 // LCOV_EXCL_STOP
 
 std::shared_ptr<DMSContinueRecomMgr> MultiUserManager::GetCurrentRecomMgr()
 {
-    HILOGI("userId: %{public}d.", currentUserId_.load());
+    int32_t userId = currentUserId_.load();
+    HILOGI("userId: %{public}d.", userId);
     std::lock_guard<std::mutex> lock(recomMutex_);
-    if (recomMgrMap_.empty() || recomMgrMap_.find(currentUserId_.load()) == recomMgrMap_.end()) {
+    if (recomMgrMap_.empty() || recomMgrMap_.find(userId) == recomMgrMap_.end()) {
         HILOGI("recomMgr need to create.");
-        CreateNewRecomMgrLocked();
+        CreateNewRecomMgrLocked(userId);
     }
-    auto cur = recomMgrMap_.find(currentUserId_.load());
+    auto cur = recomMgrMap_.find(userId);
     return cur->second;
 }
 
