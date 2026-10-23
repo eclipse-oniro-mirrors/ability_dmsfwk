@@ -1493,6 +1493,11 @@ void AbilityConnectionSession::ExeuteMessageEventCallback(const std::string msg)
         }
     }
     HILOGI("start to add msg callback to handler");
+    std::unique_lock<std::mutex> lock(eventMutex_);
+    if (eventHandler_ == nullptr) {
+        HILOGE("eventHandler is nullptr");
+        return;
+    }
     if (listener != nullptr) {
         HILOGI("handler sessionListener");
         listener->OnMessage(sessionId_, msg);
@@ -1721,11 +1726,13 @@ bool AbilityConnectionSession::IsConnected()
 void AbilityConnectionSession::FinishSessionConnect()
 {
     HILOGI("finish %{public}d connect callback", sessionId_);
-    std::lock_guard<std::shared_mutex> sessionStatusLock(sessionMutex_);
-    sessionStatus_ = SessionStatus::CONNECTED;
+    {
+        std::lock_guard<std::shared_mutex> sessionStatusLock(sessionMutex_);
+        sessionStatus_ = SessionStatus::CONNECTED;
+    }
+    std::lock_guard<std::mutex> connectionLock(connectionMutex_);
     connectionCondition_.notify_all();
 }
-
 void AbilityConnectionSession::ExeuteConnectCallback(const ConnectResult& result)
 {
     HILOGI("called.");

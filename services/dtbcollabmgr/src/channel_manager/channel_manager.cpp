@@ -191,40 +191,36 @@ ChannelManager::~ChannelManager()
 int32_t ChannelManager::Init(const std::string& ownerName)
 {
     HILOGI("start init channel manager");
+    if (initialized_.load()) {
+        HILOGW("server channel already init");
+        return ERR_OK;
+    }
+    std::lock_guard<std::mutex> initLock(initMutex_);
+    if (initialized_.load()) {
+        HILOGW("server channel already init");
+        return ERR_OK;
+    }
     if (eventHandler_ != nullptr && callbackEventHandler_ != nullptr && msgEventHandler_ != nullptr &&
         callbackEventHandlerNew_ != nullptr) {
         HILOGW("server channel already init");
+        initialized_.store(true);
         return ERR_OK;
     }
     if (serverSocketId_ > 0) {
         HILOGW("server socket already init");
+        initialized_.store(true);
         return ERR_OK;
     }
     ownerName_ = ownerName;
 
-    eventThread_ = std::thread(&ChannelManager::StartEvent, this);
-    std::unique_lock<std::mutex> lock(eventMutex_);
-    eventCon_.wait(lock, [this] {
-        return eventHandler_ != nullptr;
-    });
-
-    callbackEventThread_ = std::thread(&ChannelManager::StartCallbackEvent, this);
-    std::unique_lock<std::mutex> callbackLock(callbackEventMutex_);
-    callbackEventCon_.wait(callbackLock, [this] {
-        return callbackEventHandler_ != nullptr;
-    });
-
-    msgEventThread_ = std::thread(&ChannelManager::StartMsgEvent, this);
-    std::unique_lock<std::mutex> msgLock(msgEventMutex_);
-    msgEventCon_.wait(msgLock, [this] {
-        return msgEventHandler_ != nullptr;
-    });
-
-    callbackEventNewThread_ = std::thread(&ChannelManager::StartCallbackEventNew, this);
-    std::unique_lock<std::mutex> callbackNewLock(callbackEventNewMutex_);
-    callbackEventNewCon_.wait(callbackNewLock, [this] {
-        return callbackEventHandlerNew_ != nullptr;
-    });
+    WaitForEventHandlerThread(eventThread_, &ChannelManager::StartEvent,
+        eventMutex_, eventCon_, eventHandler_);
+    WaitForEventHandlerThread(callbackEventThread_, &ChannelManager::StartCallbackEvent,
+        callbackEventMutex_, callbackEventCon_, callbackEventHandler_);
+    WaitForEventHandlerThread(msgEventThread_, &ChannelManager::StartMsgEvent,
+        msgEventMutex_, msgEventCon_, msgEventHandler_);
+    WaitForEventHandlerThread(callbackEventNewThread_, &ChannelManager::StartCallbackEventNew,
+        callbackEventNewMutex_, callbackEventNewCon_, callbackEventHandlerNew_);
 
     int32_t socketServerId = CreateServerSocket();
     if (socketServerId <= 0) {
@@ -242,6 +238,7 @@ int32_t ChannelManager::Init(const std::string& ownerName)
         HILOGE("Get remote dms interactive adapter proxy fail, ret %{public}d.", ret);
     }
     HILOGI("end");
+    initialized_.store(true);
     return ERR_OK;
 }
 
@@ -302,6 +299,15 @@ void ChannelManager::StartMsgEvent()
     msgEventCon_.notify_one();
     runner->Run();
     HILOGI("msg event end");
+}
+
+void ChannelManager::WaitForEventHandlerThread(std::thread &thread, void (ChannelManager::*startFunc)(),
+    std::mutex &mutex, std::condition_variable &cv,
+    std::shared_ptr<OHOS::AppExecFwk::EventHandler> &handler)
+{
+    thread = std::thread(startFunc, this);
+    std::unique_lock<std::mutex> lock(mutex);
+    cv.wait(lock, [&handler]() { return handler != nullptr; });
 }
 
 int32_t ChannelManager::PostTask(const AppExecFwk::InnerEvent::Callback& callback,
@@ -490,6 +496,7 @@ void ChannelManager::Reset()
         { ChannelDataType::VIDEO_STREAM, STREAM_START_ID },
         { ChannelDataType::FILE, FILE_START_ID }
     };
+    initialized_.store(false);
 }
 
 int32_t ChannelManager::GetVersion()
