@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 
+#include "mock/mock_ipc_skeleton.h"
 #include "mock_fuzz_util.h"
 
 #include "accesstoken_kit.h"
@@ -23,6 +24,7 @@ namespace OHOS {
 namespace DistributedSchedule {
 namespace {
 constexpr const char* FOUNDATION_PROCESS_NAME = "foundation";
+constexpr int32_t FOUNDATION_UID = 5523;
 }
 
 void FuzzUtil::MockPermission()
@@ -49,6 +51,7 @@ void FuzzUtil::MockPermission()
         "ohos.permission.START_INVISIBLE_ABILITY"
     };
     MockProcessAndPermission(FOUNDATION_PROCESS_NAME, perms, 1);
+    IPCSkeleton::SetCallingUid(FOUNDATION_UID);
 }
 
 void FuzzUtil::MockProcessAndPermission(const char* processName, const char *perms[], int32_t permsNum)
@@ -67,7 +70,6 @@ void FuzzUtil::MockProcessAndPermission(const char* processName, const char *per
     tokenId = GetAccessTokenId(&infoInstance);
     SetSelfTokenID(tokenId);
     OHOS::Security::AccessToken::AccessTokenKit::ReloadNativeTokenInfo();
-    setuid(0);
 }
 }
 }

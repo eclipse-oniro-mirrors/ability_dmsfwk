@@ -27,6 +27,7 @@ ohos_fuzztest("DmsFreeInstallCallBackStubFuzzTest") {
     "${dms_path}/services/dtbschedmgr/include/collaborate/",
     "${dms_path}/test/fuzztest/dmsfreeinstallcallbackstub_fuzzer",
     "${dms_path}/test/fuzztest/util",
+    "${dms_path}/services/dtbschedmgr/test/unittest",
   ]
 
   fuzz_config_file =
@@ -44,6 +45,7 @@ ohos_fuzztest("DmsFreeInstallCallBackStubFuzzTest") {
 
   sources = [
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "dmsfreeinstallcallbackstub_fuzzer.cpp",
   ]
 

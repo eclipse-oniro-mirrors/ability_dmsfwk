@@ -36,6 +36,7 @@ namespace OHOS {
 namespace DistributedSchedule {
 const std::string TAG = "DmsTokenCallback";
 const std::string FOUNDATION_PROCESS_NAME = "foundation";
+constexpr int32_t FOUNDATION_UID = 5523;
 const std::string DMS_SRC_NETWORK_ID = "dmsSrcNetworkId";
 
 int32_t DmsTokenCallback::SendResult(OHOS::AAFwk::Want& want, int32_t callerUid,
@@ -45,11 +46,20 @@ int32_t DmsTokenCallback::SendResult(OHOS::AAFwk::Want& want, int32_t callerUid,
         HILOGW("The current user is not foreground. callingUid: %{public}d .", callerUid);
         return DMS_NOT_FOREGROUND_USER;
     }
+    uint32_t callingTokenID = IPCSkeleton::GetCallingTokenID();
+    auto tokenType = AccessToken::AccessTokenKit::GetTokenTypeFlag(callingTokenID);
+    if (tokenType != AccessToken::ATokenTypeEnum::TOKEN_NATIVE) {
+        HILOGE("check foundation call failed, tokenType is not native");
+        return INVALID_PARAMETERS_ERR;
+    }
     AccessToken::NativeTokenInfo nativeTokenInfo;
-    int32_t ret = AccessToken::AccessTokenKit::GetNativeTokenInfo(IPCSkeleton::GetCallingTokenID(),
-        nativeTokenInfo);
+    int32_t ret = AccessToken::AccessTokenKit::GetNativeTokenInfo(callingTokenID, nativeTokenInfo);
     if (ret != ERR_OK || nativeTokenInfo.processName != FOUNDATION_PROCESS_NAME) {
-        HILOGE("check foundation call failed");
+        HILOGE("check foundation call failed, processName:%{private}s", nativeTokenInfo.processName.c_str());
+        return INVALID_PARAMETERS_ERR;
+    }
+    if (IPCSkeleton::GetCallingUid() != FOUNDATION_UID) {
+        HILOGE("check foundation call failed, callingUid:%{public}d", IPCSkeleton::GetCallingUid());
         return INVALID_PARAMETERS_ERR;
     }
     std::string localDeviceId;

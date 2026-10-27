@@ -135,6 +135,7 @@ ohos_fuzztest("DistributedSchedStubFuzzTest") {
   sources = [
     "${dms_path}/services/dtbschedmgr/test/unittest/mock_distributed_sched.cpp",
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "distributedschedstub_fuzzer/distributedschedstub_fuzzer.cpp",
   ]
 
@@ -171,6 +172,7 @@ ohos_fuzztest("DistributedSchedStubOneFuzzTest") {
   sources = [
     "${dms_path}/services/dtbschedmgr/test/unittest/mock_distributed_sched.cpp",
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "distributedschedstubone_fuzzer/distributedschedstubone_fuzzer.cpp",
   ]
 
@@ -207,6 +209,7 @@ ohos_fuzztest("DistributedSchedStubTwoFuzzTest") {
   sources = [
     "${dms_path}/services/dtbschedmgr/test/unittest/mock_distributed_sched.cpp",
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "distributedschedstubtwo_fuzzer/distributedschedstubtwo_fuzzer.cpp",
   ]
 
@@ -243,6 +246,7 @@ ohos_fuzztest("DistributedSchedStubThreeFuzzTest") {
   sources = [
     "${dms_path}/services/dtbschedmgr/test/unittest/mock_distributed_sched.cpp",
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "distributedschedstubthree_fuzzer/distributedschedstubthree_fuzzer.cpp",
   ]
 
@@ -279,6 +283,7 @@ ohos_fuzztest("DistributedSchedStubFourFuzzTest") {
   sources = [
     "${dms_path}/services/dtbschedmgr/test/unittest/mock_distributed_sched.cpp",
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "distributedschedstubfour_fuzzer/distributedschedstubfour_fuzzer.cpp",
   ]
 
@@ -315,6 +320,7 @@ ohos_fuzztest("DistributedSchedStubFiveFuzzTest") {
   sources = [
     "${dms_path}/services/dtbschedmgr/test/unittest/mock_distributed_sched.cpp",
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "distributedschedstubfive_fuzzer/distributedschedstubfive_fuzzer.cpp",
   ]
 
@@ -351,6 +357,7 @@ ohos_fuzztest("DistributedSchedStubSixFuzzTest") {
   sources = [
     "${dms_path}/services/dtbschedmgr/test/unittest/mock_distributed_sched.cpp",
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "distributedschedstubsix_fuzzer/distributedschedstubsix_fuzzer.cpp",
   ]
 
@@ -387,6 +394,7 @@ ohos_fuzztest("DistributedSchedStubSevenFuzzTest") {
   sources = [
     "${dms_path}/services/dtbschedmgr/test/unittest/mock_distributed_sched.cpp",
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "distributedschedstubseven_fuzzer/distributedschedstubseven_fuzzer.cpp",
   ]
 
@@ -423,6 +431,7 @@ ohos_fuzztest("DistributedSchedStubEightFuzzTest") {
   sources = [
     "${dms_path}/services/dtbschedmgr/test/unittest/mock_distributed_sched.cpp",
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "distributedschedstubeight_fuzzer/distributedschedstubeight_fuzzer.cpp",
   ]
 
@@ -459,6 +468,7 @@ ohos_fuzztest("DistributedSchedStubNineFuzzTest") {
   sources = [
     "${dms_path}/services/dtbschedmgr/test/unittest/mock_distributed_sched.cpp",
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "distributedschedstubnine_fuzzer/distributedschedstubnine_fuzzer.cpp",
   ]
 
@@ -495,6 +505,7 @@ ohos_fuzztest("DistributedSchedStubTenFuzzTest") {
   sources = [
     "${dms_path}/services/dtbschedmgr/test/unittest/mock_distributed_sched.cpp",
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "distributedschedstubten_fuzzer/distributedschedstubten_fuzzer.cpp",
   ]
 
@@ -531,6 +542,7 @@ ohos_fuzztest("DistributedSchedStubElevenFuzzTest") {
   sources = [
     "${dms_path}/services/dtbschedmgr/test/unittest/mock_distributed_sched.cpp",
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "distributedschedstubeleven_fuzzer/distributedschedstubeleven_fuzzer.cpp",
   ]
 
@@ -566,6 +578,7 @@ ohos_fuzztest("DistributedIntentStubFuzzTest") {
 
   sources = [
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "distributedintentstub_fuzzer/distributedintentstub_fuzzer.cpp",
   ]
 
@@ -954,6 +967,7 @@ ohos_fuzztest("DistributedSchedServiceTenFuzzTest") {
   sources = [
     "${dms_path}/services/dtbschedmgr/test/unittest/mock_distributed_sched.cpp",
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "distributedschedserviceten_fuzzer/distributedschedserviceten_fuzzer.cpp",
   ]
 
@@ -990,6 +1004,7 @@ ohos_fuzztest("DistributedSchedServiceElevenFuzzTest") {
   sources = [
     "${dms_path}/services/dtbschedmgr/test/unittest/mock_distributed_sched.cpp",
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "distributedschedserviceeleven_fuzzer/distributedschedserviceeleven_fuzzer.cpp",
   ]
 
@@ -1026,6 +1041,7 @@ ohos_fuzztest("DistributedSchedStubTwelveFuzzTest") {
   sources = [
     "${dms_path}/services/dtbschedmgr/test/unittest/mock_distributed_sched.cpp",
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "distributedschedstubtwelve_fuzzer/distributedschedstubtwelve_fuzzer.cpp",
   ]
 
