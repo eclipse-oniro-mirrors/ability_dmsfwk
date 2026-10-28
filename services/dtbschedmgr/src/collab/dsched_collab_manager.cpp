@@ -259,7 +259,14 @@ void DSchedCollabManager::HandleGetSinkCollabVersion(const DSchedCollabInfo &inf
     auto newCollab = std::make_shared<DSchedCollab>(collabToken, info);
     newCollab->Init();
     newCollab->UpdateState(SOURCE_GET_PEER_VERSION_STATE);
-    collabs_.insert(std::make_pair(collabToken, newCollab));
+    {
+        std::unique_lock<std::shared_mutex> writeLock(collabMutex_);
+        if (collabs_.size() >= MAX_CONCURRENT_COLLABS) {
+            HILOGE("collabs_ size %{public}zu exceeds limit %{public}d", collabs_.size(), MAX_CONCURRENT_COLLABS);
+            return;
+        }
+        collabs_.insert(std::make_pair(collabToken, newCollab));
+    }
     newCollab->PostSrcGetPeerVersionTask();
     SetTimeOut(collabToken, COLLAB_TIMEOUT);
 
@@ -316,9 +323,26 @@ int32_t DSchedCollabManager::CollabMission(DSchedCollabInfo &info)
         HILOGE("can't find collab");
         return INVALID_PARAMETERS_ERR;
     }
-    dCollab->SetSrcCollabInfo(info);
-    dCollab->UpdateState(SOURCE_START_STATE);
-    dCollab->PostSrcStartTask();
+    return DispatchCollabMission(dCollab, info);
+}
+
+int32_t DSchedCollabManager::DispatchCollabMission(const std::shared_ptr<DSchedCollab> &dCollab,
+    DSchedCollabInfo &info)
+{
+    auto srcInfo = info;
+    auto collabTask = [dCollab, srcInfo]() {
+        DSchedCollabInfo info = srcInfo;
+        info.srcClientCB_ = dCollab->collabInfo_.srcClientCB_;
+        dCollab->collabInfo_ = info;
+        dCollab->UpdateState(SOURCE_START_STATE);
+        dCollab->PostSrcStartTask();
+    };
+    std::lock_guard<std::mutex> lock(dCollab->eventMutex_);
+    if (dCollab->eventHandler_ == nullptr) {
+        HILOGE("eventHandler is nullptr");
+        return INVALID_PARAMETERS_ERR;
+    }
+    dCollab->eventHandler_->PostTask(collabTask, "CollabMission");
     return ERR_OK;
 }
 
@@ -338,11 +362,17 @@ bool DSchedCollabManager::IsStartForeground(DSchedCollabInfo &info)
 bool DSchedCollabManager::IsSessionExists(const DSchedCollabInfo &info)
 {
     HILOGI("called");
-    for (const auto& pair : collabs_) {
-        if (pair.second == nullptr) {
-            continue;
+    std::vector<DSchedCollabInfo> existCollabInfos;
+    {
+        std::shared_lock<std::shared_mutex> readLock(collabMutex_);
+        for (const auto& pair : collabs_) {
+            if (pair.second == nullptr) {
+                continue;
+            }
+            existCollabInfos.emplace_back(pair.second->GetCollabInfo());
         }
-        DSchedCollabInfo existCollabInfo = pair.second->GetCollabInfo();
+    }
+    for (const auto& existCollabInfo : existCollabInfos) {
         if (existCollabInfo.srcInfo_.pid_ == info.srcInfo_.pid_ &&
             existCollabInfo.srcCollabSessionId_ == info.srcCollabSessionId_) {
             return true;
@@ -369,6 +399,7 @@ std::string DSchedCollabManager::GenerateCollabToken(const std::string &srcDevic
             randomValue[i] = characters[index];
         }
         randomValue = srcDeviceId + randomValue;
+        std::shared_lock<std::shared_mutex> readLock(collabMutex_);
         if (collabs_.count(randomValue) == 0) {
             isUnique = true;
         }
@@ -381,12 +412,17 @@ void DSchedCollabManager::SetTimeOut(const std::string &collabToken, int32_t tim
 {
     HILOGI("called, collabToken: %{public}s", GetAnonymStr(collabToken).c_str());
     auto func = [this, collabToken]() {
-        if (collabs_.count(collabToken) == 0) {
-            HILOGW("collab not exist.");
-            return;
+        std::shared_ptr<DSchedCollab> dCollab;
+        {
+            std::shared_lock<std::shared_mutex> readLock(collabMutex_);
+            auto it = collabs_.find(collabToken);
+            if (it == collabs_.end() || it->second == nullptr) {
+                HILOGW("collab not exist.");
+                return;
+            }
+            dCollab = it->second;
         }
         HILOGE("collab timeout! info: %{public}s", GetAnonymStr(collabToken).c_str());
-        auto dCollab = collabs_[collabToken];
         if (dCollab != nullptr) {
             dCollab->PostErrEndTask(COLLAB_ABILITY_TIMEOUT_ERR);
         }
@@ -545,16 +581,24 @@ int32_t DSchedCollabManager::NotifyAbilityDied(const std::string &bundleName, co
 int32_t DSchedCollabManager::HandleCloseSessions(const std::string &bundleName, const int32_t &pid)
 {
     HILOGI("called");
-    DSchedCollabInfo dSchedCollabInfo;
-    for (auto iter = collabs_.begin(); iter != collabs_.end(); iter++) {
-        if (iter->second == nullptr) {
-            continue;
+    std::vector<std::pair<std::string, std::shared_ptr<DSchedCollab>>> matchedCollabs;
+    {
+        std::shared_lock<std::shared_mutex> readLock(collabMutex_);
+        for (auto iter = collabs_.begin(); iter != collabs_.end(); iter++) {
+            if (iter->second == nullptr) {
+                continue;
+            }
+            DSchedCollabInfo dSchedCollabInfo = iter->second->GetCollabInfo();
+            if ((bundleName == dSchedCollabInfo.srcInfo_.bundleName_ && pid == dSchedCollabInfo.srcInfo_.pid_) ||
+                (bundleName == dSchedCollabInfo.sinkInfo_.bundleName_ && pid == dSchedCollabInfo.sinkInfo_.pid_)) {
+                HILOGI("find collab, need be clear, collabInfo: %{public}s", dSchedCollabInfo.ToString().c_str());
+                matchedCollabs.emplace_back(iter->first, iter->second);
+            }
         }
-        dSchedCollabInfo = iter->second->GetCollabInfo();
-        if ((bundleName == dSchedCollabInfo.srcInfo_.bundleName_ && pid == dSchedCollabInfo.srcInfo_.pid_) ||
-            (bundleName == dSchedCollabInfo.sinkInfo_.bundleName_ && pid == dSchedCollabInfo.sinkInfo_.pid_)) {
-            HILOGI("find collab, need be clear, collabInfo: %{public}s", dSchedCollabInfo.ToString().c_str());
-            return iter->second->PostEndTask();
+    }
+    for (auto &matched : matchedCollabs) {
+        if (matched.second != nullptr) {
+            return matched.second->PostEndTask();
         }
     }
     return ERR_OK;
@@ -566,7 +610,7 @@ int32_t DSchedCollabManager::ReleaseAbilityLink(const std::string &bundleName, c
     DSchedCollabInfo dSchedCollabInfo;
     std::string collabToken;
     {
-        std::shared_lock<std::shared_mutex> readLock(collabReadMutex_);
+        std::shared_lock<std::shared_mutex> readLock(collabMutex_);
         for (auto iter = collabs_.begin(); iter != collabs_.end(); iter++) {
             if (iter->second == nullptr) {
                 continue;
@@ -666,16 +710,20 @@ int32_t DSchedCollabManager::CleanUpSession(const std::string &collabToken)
     HILOGI("called, collabToken: %{public}s", GetAnonymStr(collabToken).c_str());
     auto func = [this, collabToken]() {
         HILOGI("called, collabToken: %{public}s", GetAnonymStr(collabToken).c_str());
-        auto dCollab = GetDSchedCollabByTokenId(collabToken);
-        if (dCollab == nullptr) {
-            HILOGE("can't find collab");
-            return;
-        }
-        dCollab->UnInit();
-        RemoveTimeout(collabToken);
+        std::shared_ptr<DSchedCollab> dCollab;
         {
-            std::lock_guard<std::mutex> collabLock(collabMutex_);
-            collabs_.erase(collabToken);
+            std::unique_lock<std::shared_mutex> writeLock(collabMutex_);
+            auto it = collabs_.find(collabToken);
+            if (it == collabs_.end() || it->second == nullptr) {
+                HILOGE("can't find collab");
+                return;
+            }
+            dCollab = std::move(it->second);
+            collabs_.erase(it);
+        }
+        RemoveTimeout(collabToken);
+        if (dCollab != nullptr) {
+            dCollab->UnInit();
         }
     };
     if (eventHandler_ == nullptr) {
@@ -689,13 +737,18 @@ int32_t DSchedCollabManager::CleanUpSession(const std::string &collabToken)
 
 std::shared_ptr<DSchedCollab> DSchedCollabManager::GetDSchedCollabByTokenId(const std::string &tokenId)
 {
-    HILOGI("called, tokenId: %{public}s", tokenId.c_str());
-    std::lock_guard<std::mutex> collabLock(collabMutex_);
-    if (tokenId.empty() || collabs_.count(tokenId) == 0) {
+    HILOGI("called, tokenId: %{public}s", GetAnonymStr(tokenId).c_str());
+    std::shared_lock<std::shared_mutex> readLock(collabMutex_);
+    if (tokenId.empty()) {
+        HILOGE("tokenId is empty.");
+        return nullptr;
+    }
+    auto it = collabs_.find(tokenId);
+    if (it == collabs_.end() || it->second == nullptr) {
         HILOGE("no such collaboration in progress.");
         return nullptr;
     }
-    return collabs_[tokenId];
+    return it->second;
 }
 
 void DSchedCollabManager::OnDataRecv(int32_t softbusSessionId, std::shared_ptr<DSchedDataBuffer> dataBuffer)
@@ -765,46 +818,69 @@ void DSchedCollabManager::NotifyDataRecv(const int32_t &softbusSessionId, int32_
     std::shared_ptr<DSchedDataBuffer> dataBuffer, const std::string& collabToken)
 {
     HILOGI("called, parsed cmd %{public}s", CMDDATA[command].c_str());
-    for (auto iter = collabs_.begin(); iter != collabs_.end(); iter++) {
-        if (iter->second != nullptr && softbusSessionId == iter->second->GetSoftbusSessionId() &&
-            collabToken == iter->second->GetCollabInfo().collabToken_) {
-            HILOGI("softbusSessionId exist.");
-            const std::string peerDeviceId =
-                DSchedTransportSoftbusAdapter::GetInstance().GetPeerDeviceIdBySocket(softbusSessionId);
-            iter->second->OnDataRecv(peerDeviceId, command, dataBuffer);
-            if (command == NOTIFY_RESULT_CMD) {
-                RemoveTimeout(iter->first);
+    std::shared_ptr<DSchedCollab> matchedCollab;
+    std::string matchedToken;
+    {
+        std::shared_lock<std::shared_mutex> readLock(collabMutex_);
+        for (auto iter = collabs_.begin(); iter != collabs_.end(); iter++) {
+            if (iter->second != nullptr && softbusSessionId == iter->second->GetSoftbusSessionId() &&
+                collabToken == iter->second->GetCollabInfo().collabToken_) {
+                matchedCollab = iter->second;
+                matchedToken = iter->first;
+                break;
             }
-            return;
         }
     }
+    if (matchedCollab != nullptr) {
+        HILOGI("softbusSessionId exist.");
+        const std::string peerDeviceId =
+            DSchedTransportSoftbusAdapter::GetInstance().GetPeerDeviceIdBySocket(softbusSessionId);
+        matchedCollab->OnDataRecv(peerDeviceId, command, dataBuffer);
+        if (command == NOTIFY_RESULT_CMD) {
+            RemoveTimeout(matchedToken);
+        }
+        return;
+    }
     if (command == SINK_GET_VERSION_CMD) {
-        auto getVersionCmd = std::make_shared<GetSinkCollabVersionCmd>();
-        int32_t ret = getVersionCmd->Unmarshal(jsonStr);
-        if (ret != ERR_OK) {
-            HILOGE("Unmarshal cmd failed, ret: %{public}d", ret);
-            return;
-        }
-        std::string localDevId;
-        if (!DtbschedmgrDeviceInfoStorage::GetInstance().GetLocalDeviceId(localDevId)) {
-            HILOGE("get local deviceId failed!");
-            return;
-        }
-        if (getVersionCmd->sinkDeviceId_ != localDevId) {
-            HILOGE("Irrecognized deviceId: %{public}s", GetAnonymStr(getVersionCmd->sinkDeviceId_).c_str());
-            return;
-        }
-        auto newCollab = std::make_shared<DSchedCollab>(getVersionCmd, softbusSessionId);
-        newCollab->Init();
-        newCollab->UpdateState(SINK_GET_VERSION_STATE);
-        collabs_.insert(std::make_pair(getVersionCmd->collabToken_, newCollab));
-        newCollab->PostSinkGetVersionTask();
-        SetTimeOut(getVersionCmd->collabToken_, COLLAB_TIMEOUT);
-        HILOGI("end");
+        CreateSinkCollab(softbusSessionId, jsonStr, dataBuffer, collabToken);
         return;
     }
     HILOGE("No matching session to handle cmd!");
     return;
+}
+
+void DSchedCollabManager::CreateSinkCollab(const int32_t &softbusSessionId, const std::string& jsonStr,
+    std::shared_ptr<DSchedDataBuffer> dataBuffer, const std::string& collabToken)
+{
+    auto getVersionCmd = std::make_shared<GetSinkCollabVersionCmd>();
+    int32_t ret = getVersionCmd->Unmarshal(jsonStr);
+    if (ret != ERR_OK) {
+        HILOGE("Unmarshal cmd failed, ret: %{public}d", ret);
+        return;
+    }
+    std::string localDevId;
+    if (!DtbschedmgrDeviceInfoStorage::GetInstance().GetLocalDeviceId(localDevId)) {
+        HILOGE("get local deviceId failed!");
+        return;
+    }
+    if (getVersionCmd->sinkDeviceId_ != localDevId) {
+        HILOGE("Irrecognized deviceId: %{public}s", GetAnonymStr(getVersionCmd->sinkDeviceId_).c_str());
+        return;
+    }
+    auto newCollab = std::make_shared<DSchedCollab>(getVersionCmd, softbusSessionId);
+    newCollab->Init();
+    newCollab->UpdateState(SINK_GET_VERSION_STATE);
+    {
+        std::unique_lock<std::shared_mutex> writeLock(collabMutex_);
+        if (collabs_.size() >= MAX_CONCURRENT_COLLABS) {
+            HILOGE("collabs_ size %{public}zu exceeds limit %{public}d", collabs_.size(), MAX_CONCURRENT_COLLABS);
+            return;
+        }
+        collabs_.insert(std::make_pair(getVersionCmd->collabToken_, newCollab));
+    }
+    newCollab->PostSinkGetVersionTask();
+    SetTimeOut(getVersionCmd->collabToken_, COLLAB_TIMEOUT);
+    HILOGI("end");
 }
 
 void DSchedCollabManager::OnShutdown(int32_t socket, bool isSelfCalled)
@@ -815,7 +891,7 @@ void DSchedCollabManager::OnShutdown(int32_t socket, bool isSelfCalled)
         return;
     }
     auto func = [this, socket]() {
-        std::lock_guard<std::mutex> collabLock(collabMutex_);
+        std::shared_lock<std::shared_mutex> readLock(collabMutex_);
         if (collabs_.empty()) {
             return;
         }
