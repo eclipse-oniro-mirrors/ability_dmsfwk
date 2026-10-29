@@ -164,6 +164,7 @@ ohos_unittest("distributedschedcallbacktest") {
     "${dms_path}/services/dtbschedmgr/src/dms_token_callback.cpp",
     "unittest/dms_callback_task_test.cpp",
     "unittest/dms_token_callback_test.cpp",
+    "unittest/mock/mock_ipc_skeleton.cpp",
     "unittest/mock_remote_stub.cpp",
     "unittest/mock/multi_user_manager_mock.cpp",
   ]
@@ -277,7 +278,10 @@ ohos_unittest("svcdistributedconnectiontest") {
 ohos_unittest("distributedschedstubtest") {
   module_out_path = module_output_path
 
-  sources = [ "unittest/distributed_sched_stub_test.cpp" ]
+  sources = [
+    "unittest/distributed_sched_stub_test.cpp",
+    "unittest/mock/mock_ipc_skeleton.cpp",
+  ]
   sources += dtbschedmgr_sources
 
   configs = [
@@ -543,6 +547,7 @@ ohos_unittest("dschedpermissiontest") {
     "unittest/mock/dtbschedmgr_device_info_storage_mock.cpp",
     "unittest/mock/distributed_sched_adapter_mock.cpp",
     "unittest/mock/dnetwork_adapter_mock.cpp",
+    "unittest/mock/mock_ipc_skeleton.cpp",
   ]
   sources += dtbschedmgr_sources
 

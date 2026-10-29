@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 
+#include "mock/mock_ipc_skeleton.h"
 #include "distributed_sched_permission_test.h"
 
 #include "accesstoken_kit.h"
@@ -67,6 +68,7 @@ const string MOCK_FIELD_GROUP_OWNER = "MockOwner";
 const int32_t MOCK_FIELD_GROUP_TYPE = 0;
 const int32_t MOCK_FIELD_GROUP_VISIBILITY = 0;
 const char* FOUNDATION_PROCESS_NAME = "foundation";
+constexpr int32_t FOUNDATION_UID = 5523;
 
 void NativeTokenGet()
 {
@@ -79,6 +81,7 @@ void NativeTokenGet()
 void DistributedSchedPermissionTest::SetUpTestCase()
 {
     DTEST_LOG << "DistributedSchedPermissionTest::SetUpTestCase" << std::endl;
+    IPCSkeleton::SetCallingUid(FOUNDATION_UID);
     const std::string pkgName = "DBinderBus_PermissionTest" + std::to_string(getprocpid());
     std::shared_ptr<DmInitCallback> initCallback_ = std::make_shared<DeviceInitCallBack>();
     DeviceManager::GetInstance().InitDeviceManager(pkgName, initCallback_);
@@ -930,6 +933,23 @@ HWTEST_F(DistributedSchedPermissionTest, IsFoundationCall_002, TestSize.Level3)
     bool ret = DistributedSchedPermission::GetInstance().IsFoundationCall();
     EXPECT_EQ(ret, true);
     DTEST_LOG << "DistributedSchedPermissionTest IsFoundationCall_002 end result:" << ret << std::endl;
+}
+
+/**
+ * @tc.name: IsFoundationCall_003
+ * @tc.desc: call IsFoundationCall with foundation process name but wrong uid
+ * @tc.type: FUNC
+ * @tc.require: I5RWIV
+ */
+HWTEST_F(DistributedSchedPermissionTest, IsFoundationCall_003, TestSize.Level3)
+{
+    DTEST_LOG << "DistributedSchedPermissionTest IsFoundationCall_003 begin" << std::endl;
+    DistributedSchedUtil::MockProcess(FOUNDATION_PROCESS_NAME);
+    IPCSkeleton::SetCallingUid(0);
+    bool ret = DistributedSchedPermission::GetInstance().IsFoundationCall();
+    EXPECT_EQ(ret, false);
+    IPCSkeleton::SetCallingUid(FOUNDATION_UID);
+    DTEST_LOG << "DistributedSchedPermissionTest IsFoundationCall_003 end result:" << ret << std::endl;
 }
 
 /**

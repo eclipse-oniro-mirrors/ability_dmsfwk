@@ -46,6 +46,7 @@ ohos_fuzztest("AbilityConnectionWrapperStubFuzzTest") {
   sources = [
     "${dms_path}/services/dtbschedmgr/test/unittest/mock_distributed_sched.cpp",
     "${dms_path}/test/fuzztest/util/mock_fuzz_util.cpp",
+    "${dms_path}/services/dtbschedmgr/test/unittest/mock/mock_ipc_skeleton.cpp",
     "abilityconnectionwrapperstub_fuzzer.cpp",
   ]
 

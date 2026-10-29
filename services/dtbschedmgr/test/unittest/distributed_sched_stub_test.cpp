@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 
+#include "mock/mock_ipc_skeleton.h"
 #define private public
 #include "bundle/bundle_manager_internal.h"
 #include "distributed_sched_service.h"
@@ -45,6 +46,7 @@ const std::string DMS_VERSION_ID = "dmsVersion";
 const std::string DMS_UID_SPEC_BUNDLE_NAME = "dmsCallerUidBundleName";
 const std::string CMPT_PARAM_FREEINSTALL_BUNDLENAMES = "ohos.extra.param.key.allowedBundles";
 constexpr const char* FOUNDATION_PROCESS_NAME = "foundation";
+constexpr int32_t FOUNDATION_UID = 5523;
 constexpr int32_t MAX_WAIT_TIME = 5000;
 const char *PERMS[] = {
     "ohos.permission.DISTRIBUTED_DATASYNC"
@@ -54,6 +56,7 @@ const char *PERMS[] = {
 void DistributedSchedStubTest::SetUpTestCase()
 {
     DTEST_LOG << "DistributedSchedStubTest::SetUpTestCase" << std::endl;
+    IPCSkeleton::SetCallingUid(FOUNDATION_UID);
 }
 
 void DistributedSchedStubTest::TearDownTestCase()

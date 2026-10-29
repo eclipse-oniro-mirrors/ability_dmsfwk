@@ -43,6 +43,7 @@ using namespace AAFwk;
 using namespace DistributedHardware;
 namespace {
 const std::string FOUNDATION_PROCESS_NAME = "foundation";
+constexpr int32_t FOUNDATION_UID = 5523;
 const std::string DMS_API_VERSION = "dmsApiVersion";
 const std::string DMS_IS_CALLER_BACKGROUND = "dmsIsCallerBackGround";
 const std::string DMS_MISSION_ID = "dmsMissionId";
@@ -668,13 +669,22 @@ int32_t DistributedSchedPermission::CheckGetCallerPermission(const AAFwk::Want& 
 bool DistributedSchedPermission::IsFoundationCall() const
 {
     uint32_t accessToken = IPCSkeleton::GetCallingTokenID();
+    auto tokenType = AccessToken::AccessTokenKit::GetTokenTypeFlag(accessToken);
+    if (tokenType != AccessToken::ATokenTypeEnum::TOKEN_NATIVE) {
+        HILOGE("not foundation called, tokenType is not native");
+        return false;
+    }
     AccessToken::NativeTokenInfo nativeTokenInfo;
     int32_t result = AccessToken::AccessTokenKit::GetNativeTokenInfo(accessToken, nativeTokenInfo);
-    if (result == ERR_OK && nativeTokenInfo.processName == FOUNDATION_PROCESS_NAME) {
-        return true;
+    if (result != ERR_OK || nativeTokenInfo.processName != FOUNDATION_PROCESS_NAME) {
+        HILOGE("not foundation called, processName:%{private}s", nativeTokenInfo.processName.c_str());
+        return false;
     }
-    HILOGE("not foundation called, processName:%{private}s", nativeTokenInfo.processName.c_str());
-    return false;
+    if (IPCSkeleton::GetCallingUid() != FOUNDATION_UID) {
+        HILOGE("not foundation called, callingUid:%{public}d", IPCSkeleton::GetCallingUid());
+        return false;
+    }
+    return true;
 }
 
 bool DistributedSchedPermission::IsSceneBoardCall() const

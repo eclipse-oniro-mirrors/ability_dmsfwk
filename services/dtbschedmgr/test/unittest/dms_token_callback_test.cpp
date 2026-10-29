@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 
+#include "mock/mock_ipc_skeleton.h"
 #include "dms_token_callback_test.h"
 
 #include "distributed_sched_interface.h"
@@ -31,11 +32,13 @@ namespace {
 const char* DISTSCHED_PROCESS_NAME = "distributedsched";
 const char* FOUNDATION_PROCESS_NAME = "foundation";
 const char* INVALID_PROCESS_NAME = "invalid_process";
+constexpr int32_t FOUNDATION_UID = 5523;
 }
 
 void DmsTokenCallbackTest::SetUpTestCase()
 {
     DTEST_LOG << "DmsTokenCallbackTest::SetUpTestCase" << std::endl;
+    IPCSkeleton::SetCallingUid(FOUNDATION_UID);
     multiUserMgrMock_ = std::make_shared<MultiUserManagerMock>();
     MultiUserManagerMock::multiUserMgrMock = multiUserMgrMock_;
 }
@@ -57,6 +60,7 @@ void DmsTokenCallbackTest::SetUp()
     DTEST_LOG << "DmsTokenCallbackTest::SetUp" << std::endl;
     dmsTokenCallback_ = new DmsTokenCallback();
     DistributedSchedUtil::MockProcess(FOUNDATION_PROCESS_NAME);
+    IPCSkeleton::SetCallingUid(FOUNDATION_UID);
 }
 
 /**
@@ -187,6 +191,27 @@ HWTEST_F(DmsTokenCallbackTest, SendResultTest_006, TestSize.Level3)
     int32_t result = dmsTokenCallback_->SendResult(want, callerUid, requestCode, accessToken, resultCode);
     EXPECT_EQ(result, DMS_NOT_FOREGROUND_USER);
     DTEST_LOG << "DmsTokenCallbackTest SendResultTest_006 end" << std::endl;
+}
+
+/**
+ * @tc.name: SendResultTest_007
+ * @tc.desc: call SendResult from foundation process name but wrong uid
+ * @tc.type: FUNC
+ */
+HWTEST_F(DmsTokenCallbackTest, SendResultTest_007, TestSize.Level3)
+{
+    DTEST_LOG << "DmsTokenCallbackTest SendResultTest_007 begin" << std::endl;
+    ASSERT_NE(dmsTokenCallback_, nullptr);
+    AAFwk::Want want;
+    int32_t callerUid = 0;
+    int32_t requestCode = 0;
+    uint32_t accessToken = 0;
+    int32_t resultCode = 0;
+    EXPECT_CALL(*multiUserMgrMock_, IsCallerForeground(_)).WillRepeatedly(Return(true));
+    IPCSkeleton::SetCallingUid(0);
+    int32_t result = dmsTokenCallback_->SendResult(want, callerUid, requestCode, accessToken, resultCode);
+    EXPECT_EQ(result, INVALID_PARAMETERS_ERR);
+    DTEST_LOG << "DmsTokenCallbackTest SendResultTest_007 end" << std::endl;
 }
 
 /**
