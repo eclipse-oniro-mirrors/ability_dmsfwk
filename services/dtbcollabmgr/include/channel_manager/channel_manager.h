@@ -110,6 +110,8 @@ private:
         { ChannelDataType::FILE, FILE_START_ID }
     };
 
+    std::mutex initMutex_;
+    std::atomic<bool> initialized_{false};
     std::mutex eventMutex_;
     std::thread eventThread_;
     std::shared_ptr<OHOS::AppExecFwk::EventHandler> eventHandler_;
@@ -152,6 +154,9 @@ private:
     void StartCallbackEvent();
     void StartCallbackEventNew();
     void StartMsgEvent();
+    void WaitForEventHandlerThread(std::thread &thread, void (ChannelManager::*startFunc)(),
+        std::mutex &mutex, std::condition_variable &cv,
+        std::shared_ptr<OHOS::AppExecFwk::EventHandler> &handler);
 
     int32_t CreateServerSocket();
     int32_t CreateClientSocket(const std::string& channelName,
