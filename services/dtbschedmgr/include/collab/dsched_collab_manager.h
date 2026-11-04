@@ -34,6 +34,7 @@ namespace DistributedSchedule {
 namespace {
 constexpr int32_t COLLAB_TIMEOUT = 10000;
 constexpr int32_t BACKGROUND_TIMEOUT = 5000;
+constexpr int32_t MAX_CONCURRENT_COLLABS = 512;
 }
 
 typedef enum {
@@ -80,6 +81,8 @@ private:
     void HandleDataRecv(const int32_t &softbusSessionId, std::shared_ptr<DSchedDataBuffer> dataBuffer);
     void NotifyDataRecv(const int32_t &softbusSessionId, int32_t command, const std::string& jsonStr,
         std::shared_ptr<DSchedDataBuffer> dataBuffer, const std::string& collabToken);
+    void CreateSinkCollab(const int32_t &softbusSessionId, const std::string& jsonStr,
+        std::shared_ptr<DSchedDataBuffer> dataBuffer, const std::string& collabToken);
     void WaitAllConnectDecision(const std::string &peerDeviceId, const std::shared_ptr<DSchedCollab> &dCollab);
     void SetTimeOut(const std::string &collabToken, int32_t timeout);
     void RemoveTimeout(const std::string &collabToken);
@@ -89,6 +92,7 @@ private:
     int32_t CheckSinkCollabRelation(const CollabInfo *sinkInfo, const DSchedCollabInfo *collabInfo);
     int32_t ConvertCollaborateResult(int32_t result);
     bool IsStartForeground(DSchedCollabInfo &info);
+    int32_t DispatchCollabMission(const std::shared_ptr<DSchedCollab> &dCollab, DSchedCollabInfo &info);
 
     class SoftbusListener : public IDataListener {
         void OnBind(int32_t socket, PeerSocketInfo info);
@@ -103,8 +107,7 @@ private:
     std::shared_ptr<OHOS::AppExecFwk::EventHandler> eventHandler_;
     std::shared_ptr<DSchedCollabManager::SoftbusListener> softbusListener_;
     std::map<std::string, std::shared_ptr<DSchedCollab>> collabs_;
-    std::mutex collabMutex_;
-    std::shared_mutex collabReadMutex_;
+    std::shared_mutex collabMutex_;
 
 #ifdef DMSFWK_ALL_CONNECT_MGR
     std::mutex connectDecisionMutex_;
