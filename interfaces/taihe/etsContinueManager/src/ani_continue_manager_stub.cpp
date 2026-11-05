@@ -82,8 +82,11 @@ int32_t AniContinuationStateManagerStub::ContinueStateCallback(MessageParcel &da
 {
     int32_t state = data.ReadInt32();
     std::string message = data.ReadString();
-    ani_ref callbackRef = callbackData_.callbackRef;
-
+    ani_ref callbackRef;
+    {
+        std::lock_guard<std::recursive_mutex> stubLock(stubMutex_);
+        callbackRef = callbackData_.callbackRef;
+    }
     auto task = [state, message, callbackRef]() {
         ani_env *env = taihe::get_env();
         if (env == nullptr) {
