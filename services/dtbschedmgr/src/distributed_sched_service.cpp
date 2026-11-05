@@ -940,10 +940,16 @@ int32_t DistributedSchedService::ContinueStateCallbackRegister(
     stateCallbackInfo.missionId = missionId;
     stateCallbackInfo.bundleName = bundleName;
     stateCallbackInfo.moduleName = moduleName;
-    stateCallbackInfo.abilityName = abilityName;
-
+    if (bundleName.empty()) {
+        HILOGE("ContinueStateCallbackRegister invalid bundleName");
+        return INVALID_PARAMETERS_ERR;
+    }
     if (callback == nullptr) {
         return NO_CONNECT_CALLBACK_ERR;
+    }
+    if (!VerifyContinueStateCallbackCaller(bundleName)) {
+        HILOGE("ContinueStateCallbackRegister caller bundle mismatch, bundleName: %{public}s", bundleName.c_str());
+        return INVALID_PARAMETERS_ERR;
     }
 
     int32_t result = DSchedContinueManager::GetInstance().ContinueStateCallbackRegister(stateCallbackInfo, callback);
@@ -961,9 +967,16 @@ int32_t DistributedSchedService::ContinueStateCallbackUnRegister(
     stateCallbackInfo.missionId = missionId;
     stateCallbackInfo.bundleName = bundleName;
     stateCallbackInfo.moduleName = moduleName;
-    stateCallbackInfo.abilityName = abilityName;
+    if (bundleName.empty()) {
+        HILOGE("ContinueStateCallbackUnRegister invalid bundleName");
+        return INVALID_PARAMETERS_ERR;
+    }
+    if (!VerifyContinueStateCallbackCaller(bundleName)) {
+        HILOGE("ContinueStateCallbackUnRegister caller bundle mismatch, bundleName: %{public}s", bundleName.c_str());
+        return INVALID_PARAMETERS_ERR;
+    }
 
-    int32_t result =  DSchedContinueManager::GetInstance().ContinueStateCallbackUnRegister(stateCallbackInfo);
+    int32_t result = DSchedContinueManager::GetInstance().ContinueStateCallbackUnRegister(stateCallbackInfo);
     HILOGI("ContinueStateCallbackUnRegister end, result: %{public}d", result);
     return result;
 }
@@ -3851,6 +3864,22 @@ bool DistributedSchedService::CheckCallingUid()
     // never allow non-system uid for distributed request
     auto callingUid = IPCSkeleton::GetCallingUid();
     return callingUid < HID_HAP;
+}
+
+bool DistributedSchedService::VerifyContinueStateCallbackCaller(const std::string &bundleName)
+{
+    int32_t callingUid = IPCSkeleton::GetCallingUid();
+    std::string callerBundleName;
+    if (!BundleManagerInternal::GetSpecifyBundleNameFromBms(callingUid, callerBundleName)) {
+        HILOGE("Get specify bundle name from Bms fail, callingUid: %{public}d", callingUid);
+        return false;
+    }
+    if (callerBundleName != bundleName) {
+        HILOGE("caller bundle mismatch, callingUid: %{public}d, callerBundle: %{public}s, reqBundle: %{public}s",
+            callingUid, callerBundleName.c_str(), bundleName.c_str());
+        return false;
+    }
+    return true;
 }
 
 void DistributedSchedService::GetContinueEventInfo(int32_t callingUid, std::vector<EventNotify> &events)

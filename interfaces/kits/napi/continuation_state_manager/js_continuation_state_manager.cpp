@@ -40,6 +40,8 @@ namespace {
 
 std::map<std::string, sptr<DistributedSchedule::JsContinuationStateManagerStub>>
     JsContinuationStateManager::callbackStubs_;
+std::set<DistributedSchedule::JsContinuationStateManagerStub::StateCallbackData>
+    JsContinuationStateManager::callbackDataSet_;
 
 napi_value JsContinuationStateManager::ContinueStateCallbackOn(napi_env env, napi_callback_info info)
 {
@@ -56,21 +58,27 @@ napi_value JsContinuationStateManager::ContinueStateCallbackOn(napi_env env, nap
         return ret;
     }
 
-    std::string key = std::to_string(stub->callbackData_.missionId) + stub->callbackData_.bundleName +
-            stub->callbackData_.moduleName + stub->callbackData_.abilityName;
+    std::string key = MakeCallbackKey(stub->callbackData_);
+    sptr<DistributedSchedule::JsContinuationStateManagerStub> registerStub = nullptr;
     auto cacheStubEntry = callbackStubs_.find(key);
     if (cacheStubEntry == callbackStubs_.end() || cacheStubEntry->second == nullptr) {
         callbackStubs_[key] = stub;
+        callbackDataSet_.insert(stub->callbackData_);
+        registerStub = stub;
     } else {
-        napi_ref oldCallbackRef = callbackStubs_[key]->callbackData_.callbackRef;
+        sptr<DistributedSchedule::JsContinuationStateManagerStub> cachedStub = cacheStubEntry->second;
+        napi_ref oldCallbackRef = cachedStub->callbackData_.callbackRef;
         if (oldCallbackRef != nullptr) {
             napi_delete_reference(env, oldCallbackRef);
         }
-        callbackStubs_[key]->callbackData_.callbackRef = stub->callbackData_.callbackRef;
+        cachedStub->callbackData_.callbackRef = stub->callbackData_.callbackRef;
+        callbackDataSet_.erase(stub->callbackData_);
+        callbackDataSet_.insert(cachedStub->callbackData_);
+        registerStub = cachedStub;
     }
 
     DistributedSchedule::ContinuationStateClient client;
-    result = client.RegisterContinueStateCallback(stub);
+    result = client.RegisterContinueStateCallback(registerStub);
     HILOGI("ContinueStateCallbackOn register callback result: %{public}d", result);
 
     if (result != ERR_OK) {
@@ -82,7 +90,6 @@ napi_value JsContinuationStateManager::ContinueStateCallbackOn(napi_env env, nap
 
 napi_value JsContinuationStateManager::ContinueStateCallbackOff(napi_env env, napi_callback_info info)
 {
-    HILOGI("ContinueStateCallbackOff call");
     napi_value ret = nullptr;
     int32_t result = SUCCESS;
     sptr<DistributedSchedule::JsContinuationStateManagerStub> stub = CreateStub(env, info, false);
@@ -99,27 +106,21 @@ napi_value JsContinuationStateManager::ContinueStateCallbackOff(napi_env env, na
     result = client.UnRegisterContinueStateCallback(stub);
     HILOGI("ContinueStateCallbackOff unregister callback result: %{public}d", result);
 
-    std::string key = std::to_string(stub->callbackData_.missionId) + stub->callbackData_.bundleName +
-                      stub->callbackData_.moduleName + stub->callbackData_.abilityName;
+    std::string key = MakeCallbackKey(stub->callbackData_);
     if (result == ERR_OK) {
+        auto cachedEntry = callbackStubs_.find(key);
+        if (cachedEntry != callbackStubs_.end() && cachedEntry->second != nullptr) {
+            napi_ref cachedRef = cachedEntry->second->callbackData_.callbackRef;
+            if (cachedRef != nullptr) {
+                napi_delete_reference(env, cachedRef);
+                cachedEntry->second->callbackData_.callbackRef = nullptr;
+            }
+        }
         callbackStubs_.erase(key);
+        callbackDataSet_.erase(stub->callbackData_);
     }
     if (stub->callbackData_.callbackRef != nullptr) {
-        int32_t state = result;
-        napi_value callback = nullptr;
-        napi_get_reference_value(env, stub->callbackData_.callbackRef, &callback);
-        napi_value undefined = nullptr;
-        napi_get_undefined(env, &undefined);
-        napi_value continueResultInfo;
-        napi_create_object(env, &continueResultInfo);
-        napi_value resultState;
-        napi_create_int32(env, state, &resultState);
-        napi_set_named_property(env, continueResultInfo, "resultState", resultState);
-        napi_value resultInfo;
-        napi_create_string_utf8(env, "", 0, &resultInfo);
-        napi_set_named_property(env, continueResultInfo, "resultInfo", resultInfo);
-        napi_value callbackResult[2] = {NULL, continueResultInfo};
-        napi_call_function(env, undefined, callback, CALLBACK_PARAMS_NUM, callbackResult, nullptr);
+        NotifyOffResult(env, result, stub->callbackData_.callbackRef);
     }
 
     if (result != ERR_OK) {
@@ -127,6 +128,31 @@ napi_value JsContinuationStateManager::ContinueStateCallbackOff(napi_env env, na
     }
     napi_get_value_int32(env, ret, &result);
     return ret;
+}
+
+std::string JsContinuationStateManager::MakeCallbackKey(
+    const JsContinuationStateManagerStub::StateCallbackData &callbackData)
+{
+    return std::to_string(callbackData.missionId) + callbackData.bundleName +
+        callbackData.moduleName + callbackData.abilityName;
+}
+
+void JsContinuationStateManager::NotifyOffResult(napi_env env, int32_t state, napi_ref callbackRef)
+{
+    napi_value callback = nullptr;
+    napi_get_reference_value(env, callbackRef, &callback);
+    napi_value undefined = nullptr;
+    napi_get_undefined(env, &undefined);
+    napi_value continueResultInfo;
+    napi_create_object(env, &continueResultInfo);
+    napi_value resultState;
+    napi_create_int32(env, state, &resultState);
+    napi_set_named_property(env, continueResultInfo, "resultState", resultState);
+    napi_value resultInfo;
+    napi_create_string_utf8(env, "", 0, &resultInfo);
+    napi_set_named_property(env, continueResultInfo, "resultInfo", resultInfo);
+    napi_value callbackResult[2] = {NULL, continueResultInfo};
+    napi_call_function(env, undefined, callback, CALLBACK_PARAMS_NUM, callbackResult, nullptr);
 }
 
 void JsContinuationStateManager::HandleError(napi_env env,
