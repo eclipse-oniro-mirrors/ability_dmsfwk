@@ -1093,6 +1093,9 @@ bool DistributedSchedPermission::CheckDeviceSecurityLevel(const std::string& src
     }
     int32_t srcDeviceSecurityLevel = GetDeviceSecurityLevel(srcUdid);
     int32_t dstDeviceSecurityLevel = GetDeviceSecurityLevel(dstUdid);
+    HILOGI("srcLevel:%{public}d dstLevel:%{public}d srcDev:%{public}s dstDev:%{public}s",
+        srcDeviceSecurityLevel, dstDeviceSecurityLevel,
+        GetAnonymStr(srcDeviceId).c_str(), GetAnonymStr(dstDeviceId).c_str());
     if (srcDeviceSecurityLevel == DEFAULT_DEVICE_SECURITY_LEVEL ||
         srcDeviceSecurityLevel < dstDeviceSecurityLevel) {
         HILOGE("the device security of source device is lower");
