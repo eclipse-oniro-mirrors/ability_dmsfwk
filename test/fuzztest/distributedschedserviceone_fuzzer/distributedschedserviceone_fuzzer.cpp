@@ -15,10 +15,12 @@
 
 #include "distributedschedserviceone_fuzzer.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <fuzzer/FuzzedDataProvider.h>
 #include <singleton.h>
+#include <thread>
 
 #include "distributed_sched_interface.h"
 #include "distributed_sched_service.h"
@@ -34,6 +36,11 @@ using namespace OHOS::AppExecFwk;
 
 namespace OHOS {
 namespace DistributedSchedule {
+constexpr int32_t FUZZ_BRANCH_COUNT = 2;
+enum FuzzCaseIndex {
+    DEVICE_OFFLINE_NOTIFY,
+    DEVICE_OFFLINE_AFTER_DELETE,
+};
 
 std::string GetDExtensionName(std::string bundleName, int32_t userId);
 std::string GetDExtensionProcess(std::string bundleName, int32_t userId);
@@ -59,12 +66,41 @@ void DeviceOfflineNotifyAfterDeleteFuzzTest(const uint8_t* data, size_t size)
     std::string networkId = fdp.ConsumeRandomLengthString();
     DistributedSchedService::GetInstance().DeviceOfflineNotifyAfterDelete(networkId);
 }
+
+constexpr int32_t STOP_SERVICE_WAIT_MS = 200;
+
+void StopServiceForFuzzCleanup()
+{
+    SystemAbilityOnDemandReason stopReason;
+    DistributedSchedService::GetInstance().OnStop(stopReason);
+    std::this_thread::sleep_for(std::chrono::milliseconds(STOP_SERVICE_WAIT_MS));
+}
+
+class FuzzCleanupGuard {
+public:
+    FuzzCleanupGuard() = default;
+    ~FuzzCleanupGuard() { StopServiceForFuzzCleanup(); }
+};
 }
 }
 /* Fuzzer entry point */
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
-    OHOS::DistributedSchedule::DeviceOfflineNotifyFuzzTest(data, size);
-    OHOS::DistributedSchedule::DeviceOfflineNotifyAfterDeleteFuzzTest(data, size);
+    static OHOS::DistributedSchedule::FuzzCleanupGuard cleanupGuard;
+
+    if ((data == nullptr) || (size < sizeof(uint8_t))) {
+        return 0;
+    }
+    uint8_t fuzzChoice = data[0];
+    switch (fuzzChoice % OHOS::DistributedSchedule::FUZZ_BRANCH_COUNT) {
+        case OHOS::DistributedSchedule::DEVICE_OFFLINE_NOTIFY:
+            OHOS::DistributedSchedule::DeviceOfflineNotifyFuzzTest(data, size);
+            return 0;
+        case OHOS::DistributedSchedule::DEVICE_OFFLINE_AFTER_DELETE:
+            OHOS::DistributedSchedule::DeviceOfflineNotifyAfterDeleteFuzzTest(data, size);
+            return 0;
+        default:
+            break;
+    }
     return 0;
 }

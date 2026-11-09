@@ -15,10 +15,12 @@
 
 #include "distributedschedservicethree_fuzzer.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <fuzzer/FuzzedDataProvider.h>
 #include <singleton.h>
+#include <thread>
 
 #include "distributed_sched_interface.h"
 #include "distributed_sched_service.h"
@@ -35,6 +37,13 @@ using namespace OHOS::AppExecFwk;
 namespace OHOS {
 namespace DistributedSchedule {
 constexpr int32_t ON_DEMAND_REASON_ID_COUNT = 7;
+constexpr int32_t FUZZ_BRANCH_COUNT = 4;
+enum FuzzCaseIndex {
+    ON_START,
+    ON_ADD_ABILITY,
+    CONTINUE_STATE_UNREGISTER,
+    CONTINUE_MISSION,
+};
 
 std::string GetDExtensionName(std::string bundleName, int32_t userId);
 std::string GetDExtensionProcess(std::string bundleName, int32_t userId);
@@ -92,14 +101,41 @@ void ContinueMissionFuzzTest(const uint8_t* data, size_t size)
     OHOS::AAFwk::WantParams wantParams;
     DistributedSchedService::GetInstance().ContinueMission(srcDeviceId, dstDeviceId, missionId, callback, wantParams);
 }
+
+constexpr int32_t STOP_SERVICE_WAIT_MS = 200;
+
+void StopServiceForFuzzCleanup()
+{
+    SystemAbilityOnDemandReason stopReason;
+    DistributedSchedService::GetInstance().OnStop(stopReason);
+    std::this_thread::sleep_for(std::chrono::milliseconds(STOP_SERVICE_WAIT_MS));
+}
 }
 }
 /* Fuzzer entry point */
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
-    OHOS::DistributedSchedule::OnStartFuzzTest(data, size);
-    OHOS::DistributedSchedule::OnAddSystemAbilityFuzzTest(data, size);
-    OHOS::DistributedSchedule::ContinueStateCallbackUnRegisterFuzzTest(data, size);
-    OHOS::DistributedSchedule::ContinueMissionFuzzTest(data, size);
+    if ((data == nullptr) || (size < sizeof(uint8_t))) {
+        return 0;
+    }
+    uint8_t fuzzChoice = data[0];
+    switch (fuzzChoice % OHOS::DistributedSchedule::FUZZ_BRANCH_COUNT) {
+        case OHOS::DistributedSchedule::ON_START:
+            OHOS::DistributedSchedule::OnStartFuzzTest(data, size);
+            return 0;
+        case OHOS::DistributedSchedule::ON_ADD_ABILITY:
+            OHOS::DistributedSchedule::OnAddSystemAbilityFuzzTest(data, size);
+            break;
+        case OHOS::DistributedSchedule::CONTINUE_STATE_UNREGISTER:
+            OHOS::DistributedSchedule::ContinueStateCallbackUnRegisterFuzzTest(data, size);
+            break;
+        case OHOS::DistributedSchedule::CONTINUE_MISSION:
+            OHOS::DistributedSchedule::ContinueMissionFuzzTest(data, size);
+            break;
+        default:
+            break;
+    }
+    // Stop the service to clean up async threads (MissionManagerHandler, DmsExCmptChange, etc.)
+    OHOS::DistributedSchedule::StopServiceForFuzzCleanup();
     return 0;
 }

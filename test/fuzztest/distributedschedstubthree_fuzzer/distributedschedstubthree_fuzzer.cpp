@@ -15,10 +15,12 @@
 
 #include "distributedschedstubthree_fuzzer.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <fuzzer/FuzzedDataProvider.h>
 #include <singleton.h>
+#include <thread>
 
 #include "distributed_sched_interface.h"
 #include "distributed_sched_service.h"
@@ -35,6 +37,14 @@ using namespace OHOS::AppExecFwk;
 namespace OHOS {
 namespace DistributedSchedule {
 const std::string TAG = "DistributedSchedFuzzTest";
+constexpr int32_t FUZZ_BRANCH_COUNT = 5;
+enum FuzzCaseIndex {
+    GET_MISSION_SNAPSHOT,
+    START_ABILITY_BY_CALL,
+    RELEASE_ABILITY,
+    GET_COMPONENT_LIST,
+    SYNC_MISSIONS,
+};
 namespace {
 const uint32_t ONE = 1;
 }
@@ -154,16 +164,45 @@ void StartSyncMissionsFromRemoteInnerFuzzTest(const uint8_t* data, size_t size)
     PARCEL_WRITE_HELPER_NORET(dataParcel, Int32, int32Data);
     DistributedSchedService::GetInstance().StartSyncMissionsFromRemoteInner(dataParcel, reply);
 }
+
+constexpr int32_t STOP_SERVICE_WAIT_MS = 200;
+
+void StopServiceForFuzzCleanup()
+{
+    SystemAbilityOnDemandReason stopReason;
+    DistributedSchedService::GetInstance().OnStop(stopReason);
+    std::this_thread::sleep_for(std::chrono::milliseconds(STOP_SERVICE_WAIT_MS));
+}
 }
 }
 
 /* Fuzzer entry point */
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
-    OHOS::DistributedSchedule::GetRemoteMissionSnapshotInfoInnerFuzzTest(data, size);
-    OHOS::DistributedSchedule::StartRemoteAbilityByCallInnerFuzzTest(data, size);
-    OHOS::DistributedSchedule::ReleaseRemoteAbilityInnerFuzzTest(data, size);
-    OHOS::DistributedSchedule::GetDistributedComponentListInnerFuzzTest(data, size);
-    OHOS::DistributedSchedule::StartSyncMissionsFromRemoteInnerFuzzTest(data, size);
+    if ((data == nullptr) || (size < sizeof(uint8_t))) {
+        return 0;
+    }
+    uint8_t fuzzChoice = data[0];
+    switch (fuzzChoice % OHOS::DistributedSchedule::FUZZ_BRANCH_COUNT) {
+        case OHOS::DistributedSchedule::GET_MISSION_SNAPSHOT:
+            OHOS::DistributedSchedule::GetRemoteMissionSnapshotInfoInnerFuzzTest(data, size);
+            break;
+        case OHOS::DistributedSchedule::START_ABILITY_BY_CALL:
+            OHOS::DistributedSchedule::StartRemoteAbilityByCallInnerFuzzTest(data, size);
+            break;
+        case OHOS::DistributedSchedule::RELEASE_ABILITY:
+            OHOS::DistributedSchedule::ReleaseRemoteAbilityInnerFuzzTest(data, size);
+            break;
+        case OHOS::DistributedSchedule::GET_COMPONENT_LIST:
+            OHOS::DistributedSchedule::GetDistributedComponentListInnerFuzzTest(data, size);
+            break;
+        case OHOS::DistributedSchedule::SYNC_MISSIONS:
+            OHOS::DistributedSchedule::StartSyncMissionsFromRemoteInnerFuzzTest(data, size);
+            break;
+        default:
+            break;
+    }
+    // Stop the service to clean up async threads (MissionManagerHandler, DmsExCmptChange, etc.)
+    OHOS::DistributedSchedule::StopServiceForFuzzCleanup();
     return 0;
 }
