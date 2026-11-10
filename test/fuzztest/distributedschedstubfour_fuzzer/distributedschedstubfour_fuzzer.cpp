@@ -15,10 +15,12 @@
 
 #include "distributedschedstubfour_fuzzer.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <fuzzer/FuzzedDataProvider.h>
 #include <singleton.h>
+#include <thread>
 
 #include "distributed_sched_interface.h"
 #include "distributed_sched_service.h"
@@ -35,6 +37,14 @@ using namespace OHOS::AppExecFwk;
 namespace OHOS {
 namespace DistributedSchedule {
 const std::string TAG = "DistributedSchedFuzzTest";
+constexpr int32_t FUZZ_BRANCH_COUNT = 5;
+enum FuzzCaseIndex {
+    START_FREE_INSTALL,
+    START_SHARE_FORM,
+    STOP_EXTENSION_ABILITY,
+    REGISTER_ON_LISTENER,
+    STOP_SYNC_MISSIONS,
+};
 namespace {
 const std::u16string DMS_STUB_INTERFACE_TOKEN = u"ohos.distributedschedule.accessToken";
 }
@@ -54,7 +64,7 @@ void StartRemoteFreeInstallInnerFuzzTest(const uint8_t* data, size_t size)
     sptr<IRemoteObject> obj(new MockDistributedSched());
     Want want;
     std::string dstDeviceId = fdp.ConsumeRandomLengthString();
-    
+
     want.SetDeviceId(dstDeviceId);
     dataParcel.WriteInterfaceToken(DMS_STUB_INTERFACE_TOKEN);
     PARCEL_WRITE_HELPER_NORET(dataParcel, Parcelable, &want);
@@ -80,7 +90,7 @@ void StartRemoteShareFormInnerFuzzTest(const uint8_t* data, size_t size)
     std::string str = fdp.ConsumeRandomLengthString();
     Want want;
     std::string dstDeviceId = fdp.ConsumeRandomLengthString();
-    
+
     want.SetDeviceId(dstDeviceId);
     dataParcel.WriteInterfaceToken(DMS_STUB_INTERFACE_TOKEN);
     PARCEL_WRITE_HELPER_NORET(dataParcel, String, str);
@@ -105,7 +115,7 @@ void StopRemoteExtensionAbilityInnerFuzzTest(const uint8_t* data, size_t size)
     std::string dstDeviceId = fdp.ConsumeRandomLengthString();
     std::string bundleName = fdp.ConsumeRandomLengthString();
     std::string abilityName = fdp.ConsumeRandomLengthString();
-    
+
     want.SetDeviceId(dstDeviceId);
     want.SetElementName(bundleName, abilityName);
     dataParcel.WriteParcelable(&want);
@@ -165,16 +175,51 @@ void StopSyncMissionsFromRemoteInnerFuzzTest(const uint8_t* data, size_t size)
 
     DistributedSchedService::GetInstance().StopSyncMissionsFromRemoteInner(dataParcel, reply);
 }
+
+constexpr int32_t STOP_SERVICE_WAIT_MS = 200;
+
+void StopServiceForFuzzCleanup()
+{
+    SystemAbilityOnDemandReason stopReason;
+    DistributedSchedService::GetInstance().OnStop(stopReason);
+    std::this_thread::sleep_for(std::chrono::milliseconds(STOP_SERVICE_WAIT_MS));
+}
+
+class FuzzCleanupGuard {
+public:
+    FuzzCleanupGuard() = default;
+    ~FuzzCleanupGuard() { StopServiceForFuzzCleanup(); }
+};
 }
 }
 
 /* Fuzzer entry point */
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
-    OHOS::DistributedSchedule::StartRemoteFreeInstallInnerFuzzTest(data, size);
-    OHOS::DistributedSchedule::StartRemoteShareFormInnerFuzzTest(data, size);
-    OHOS::DistributedSchedule::StopRemoteExtensionAbilityInnerFuzzTest(data, size);
-    OHOS::DistributedSchedule::RegisterOnListenerInnerFuzzTest(data, size);
-    OHOS::DistributedSchedule::StopSyncMissionsFromRemoteInnerFuzzTest(data, size);
-    return 0;
+    if ((data == nullptr) || (size < sizeof(uint8_t))) {
+        return 0;
+    }
+
+    static OHOS::DistributedSchedule::FuzzCleanupGuard cleanupGuard;
+
+    uint8_t fuzzChoice = data[0];
+    switch (fuzzChoice % OHOS::DistributedSchedule::FUZZ_BRANCH_COUNT) {
+        case OHOS::DistributedSchedule::START_FREE_INSTALL:
+            OHOS::DistributedSchedule::StartRemoteFreeInstallInnerFuzzTest(data, size);
+            return 0;
+        case OHOS::DistributedSchedule::START_SHARE_FORM:
+            OHOS::DistributedSchedule::StartRemoteShareFormInnerFuzzTest(data, size);
+            return 0;
+        case OHOS::DistributedSchedule::STOP_EXTENSION_ABILITY:
+            OHOS::DistributedSchedule::StopRemoteExtensionAbilityInnerFuzzTest(data, size);
+            return 0;
+        case OHOS::DistributedSchedule::REGISTER_ON_LISTENER:
+            OHOS::DistributedSchedule::RegisterOnListenerInnerFuzzTest(data, size);
+            return 0;
+        case OHOS::DistributedSchedule::STOP_SYNC_MISSIONS:
+            OHOS::DistributedSchedule::StopSyncMissionsFromRemoteInnerFuzzTest(data, size);
+            return 0;
+        default:
+            return 0;
+    }
 }

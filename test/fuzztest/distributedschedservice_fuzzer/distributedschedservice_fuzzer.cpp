@@ -15,10 +15,12 @@
 
 #include "distributedschedservice_fuzzer.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <fuzzer/FuzzedDataProvider.h>
 #include <singleton.h>
+#include <thread>
 
 #include "distributed_sched_interface.h"
 #include "distributed_sched_service.h"
@@ -95,11 +97,28 @@ void DeviceOnlineNotifyFuzzTest(const uint8_t* data, size_t size)
     std::string networkId = fdp.ConsumeRandomLengthString();
     DistributedSchedService::GetInstance().DeviceOnlineNotify(networkId);
 }
+
+constexpr int32_t STOP_SERVICE_WAIT_MS = 200;
+
+void StopServiceForFuzzCleanup()
+{
+    SystemAbilityOnDemandReason stopReason;
+    DistributedSchedService::GetInstance().OnStop(stopReason);
+    std::this_thread::sleep_for(std::chrono::milliseconds(STOP_SERVICE_WAIT_MS));
+}
+
+class FuzzCleanupGuard {
+public:
+    FuzzCleanupGuard() = default;
+    ~FuzzCleanupGuard() { StopServiceForFuzzCleanup(); }
+};
 }
 }
 /* Fuzzer entry point */
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
+    static OHOS::DistributedSchedule::FuzzCleanupGuard cleanupGuard;
+
     OHOS::DistributedSchedule::OnStopFuzzTest(data, size);
     OHOS::DistributedSchedule::OnActiveFuzzTest(data, size);
     OHOS::DistributedSchedule::HandleBootStartFuzzTest(data, size);
