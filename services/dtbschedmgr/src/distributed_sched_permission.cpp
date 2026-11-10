@@ -280,7 +280,7 @@ int32_t DistributedSchedPermission::GetAccountInfo(const std::string& remoteNetw
         HILOGE("udid is empty");
         return ERR_NULL_OBJECT;
     }
-    if (!GetOsAccountData(accountInfo)) {
+    if (!GetOsAccountData(accountInfo, callerInfo.uid)) {
         HILOGE("Get Os accountId and userId fail.");
         return INVALID_PARAMETERS_ERR;
     }
@@ -303,19 +303,27 @@ int32_t DistributedSchedPermission::GetAccountInfo(const std::string& remoteNetw
     return  INVALID_PARAMETERS_ERR;
 }
 
-bool DistributedSchedPermission::GetOsAccountData(AccountInfo& dmsAccountInfo)
+bool DistributedSchedPermission::GetOsAccountData(AccountInfo& dmsAccountInfo, int32_t callerUid)
 {
 #ifdef OS_ACCOUNT_PART
-    std::vector<int32_t> ids;
-    ErrCode ret = AccountSA::OsAccountManager::QueryActiveOsAccountIds(ids);
-    if (ret != ERR_OK || ids.empty()) {
-        HILOGE("Get userId from active Os AccountIds fail, ret : %{public}d", ret);
-        return false;
+    if (callerUid >= 0) {
+        ErrCode ret = AccountSA::OsAccountManager::GetOsAccountLocalIdFromUid(callerUid, dmsAccountInfo.userId);
+        if (ret != ERR_OK || dmsAccountInfo.userId < 0) {
+            HILOGE("GetOsAccountLocalIdFromUid failed, ret=%{public}d, callerUid=%{public}d", ret, callerUid);
+            return false;
+        }
+    } else {
+        std::vector<int32_t> ids;
+        ErrCode ret = AccountSA::OsAccountManager::QueryActiveOsAccountIds(ids);
+        if (ret != ERR_OK || ids.empty()) {
+            HILOGE("QueryActiveOsAccountIds failed, ret=%{public}d", ret);
+            return false;
+        }
+        dmsAccountInfo.userId = ids[0];
     }
-    dmsAccountInfo.userId = ids[0];
 
     AccountSA::OhosAccountInfo osAccountInfo;
-    ret = AccountSA::OhosAccountKits::GetInstance().GetOhosAccountInfo(osAccountInfo);
+    ErrCode ret = AccountSA::OhosAccountKits::GetInstance().GetOhosAccountInfo(osAccountInfo);
     if (ret != 0 || osAccountInfo.uid_ == "") {
         HILOGE("Get accountId from Ohos account info fail, ret: %{public}d.", ret);
         return false;

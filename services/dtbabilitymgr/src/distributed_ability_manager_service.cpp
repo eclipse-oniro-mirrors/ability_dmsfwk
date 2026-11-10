@@ -433,12 +433,12 @@ int32_t DistributedAbilityManagerService::ConnectAbility(int32_t token,
     want.SetAction(DMS_HIPLAY_ACTION);
     int32_t activeAccountId = -1;
 #ifdef OS_ACCOUNT_PART
-    std::vector<int32_t> ids;
-    int32_t ret = AccountSA::OsAccountManager::QueryActiveOsAccountIds(ids);
-    if (ret != ERR_OK || ids.empty()) {
+    int32_t callingUid = IPCSkeleton::GetCallingUid();
+    int32_t ret = AccountSA::OsAccountManager::GetOsAccountLocalIdFromUid(callingUid, activeAccountId);
+    if (ret != ERR_OK || activeAccountId < 0) {
+        HILOGE("GetOsAccountLocalIdFromUid failed, ret=%{public}d, callingUid=%{public}d", ret, callingUid);
         return INVALID_PARAMETERS_ERR;
     }
-    activeAccountId = ids[0];
 #endif
     AppExecFwk::ExtensionAbilityInfo extensionInfo;
     if (!QueryExtensionAbilityInfo(activeAccountId, want, extensionInfo)) {
