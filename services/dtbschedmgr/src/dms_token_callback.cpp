@@ -93,21 +93,9 @@ int32_t DmsTokenCallback::SendResult(OHOS::AAFwk::Want& want, int32_t callerUid,
 int32_t DmsTokenCallback::GetAccountInfoWrapper(const std::string& deviceId, CallerInfo& callerInfo,
     AccountInfo& accountInfo)
 {
-    auto& loader = MissionLoader::GetInstance();
-    bool useMissionLoader = loader.Load() && loader.MissionGetOsAccountData;
-    if (useMissionLoader) {
-        // 优先使用动态库方式
-        if (!loader.MissionGetOsAccountData(accountInfo)) {
-            HILOGW("MissionGetOsAccountData failed, try fallback method.");
-            useMissionLoader = false;
-        }
-    }
-    if (!useMissionLoader) {
-        // 备用方案：使用 DistributedSchedPermission 的方法（不依赖动态库）
-        if (!DistributedSchedPermission::GetInstance().GetOsAccountData(accountInfo)) {
-            HILOGE("Get Os accountId and userId fail.");
-            return INVALID_PARAMETERS_ERR;
-        }
+    if (!DistributedSchedPermission::GetInstance().GetOsAccountData(accountInfo, callerInfo.uid)) {
+        HILOGE("Get Os accountId and userId fail.");
+        return INVALID_PARAMETERS_ERR;
     }
     callerInfo.bundleNames.clear();
     callerInfo.bundleNames.push_back(this->bundleName_);

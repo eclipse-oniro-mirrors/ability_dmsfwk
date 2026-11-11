@@ -78,7 +78,7 @@ public:
     bool VerifySourceDeviceConnected(const CallerInfo& callerInfo) const;
     bool CheckDeviceSecurityLevel(const std::string& srcDeviceId, const std::string& dstDeviceId) const;
     bool CheckTargetAbilityVisible(const AppExecFwk::AbilityInfo& targetAbility, const CallerInfo& callerInfo) const;
-    bool GetOsAccountData(AccountInfo& dmsAccountInfo);
+    bool GetOsAccountData(AccountInfo& dmsAccountInfo, int32_t callerUid = -1);
 
 private:
     bool CheckSameAccount(const std::string& dstNetworkId, const AccountInfo& dmsAccountInfo,

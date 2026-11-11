@@ -237,27 +237,35 @@ void MultiUserManager::UserSwitchedOnRegisterListenerCache()
 
 void MultiUserManager::OnUserRemoved(int32_t accountId)
 {
-    HILOGI("UserRemoved start");
+    HILOGI("UserRemoved start, accountId: %{public}d", accountId);
+    DSchedCollabManager::GetInstance().DisconnectAllSessionsForUser(accountId);
     {
         std::lock_guard<std::mutex> lock(sendMutex_);
-        if (!sendMgrMap_.empty()) {
-            auto it = sendMgrMap_.find(accountId);
-            if (it != sendMgrMap_.end()) {
-                sendMgrMap_.erase(it);
-            }
-        }
+        sendMgrMap_.erase(accountId);
     }
+
     {
         std::lock_guard<std::mutex> lock(recvMutex_);
-        if (!recvMgrMap_.empty()) {
-            auto it = recvMgrMap_.find(accountId);
-            if (it != recvMgrMap_.end()) {
-                recvMgrMap_.erase(it);
-            }
-        }
+        recvMgrMap_.erase(accountId);
     }
+
+    {
+        std::lock_guard<std::mutex> lock(recomMutex_);
+        recomMgrMap_.erase(accountId);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(listenerMutex_);
+        listenerCache_.erase(accountId);
+        multiListenerCache_.erase(accountId);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(distributedAccountMutex_);
+        localIdToDistributedAccountMap_.erase(accountId);
+    }
+
     DmsContinueConditionMgr::GetInstance().OnUserRemoved(accountId);
-    HILOGI("UserRemoved end");
 }
 
 // LCOV_EXCL_START
