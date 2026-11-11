@@ -206,8 +206,8 @@ sptr<AniContinuationStateManagerStub> AniContinueManager::CreateStub(uintptr_t c
         ani_object funObject = reinterpret_cast<ani_object>(opq);
         ani_status status = env->GlobalReference_Create(funObject, &callbackRef);
         if (status != ANI_OK) {
-            HILOGE("create callback object failed, status = %{public}d", status);
-            callbackRef = nullptr;
+            HILOGE("create callback object failed, abort registration, status = %{public}d", status);
+            return nullptr;
         }
         callbackData.callbackRef = callbackRef;
     }
