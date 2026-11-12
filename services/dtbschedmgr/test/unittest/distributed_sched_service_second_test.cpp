@@ -35,6 +35,7 @@
 #include "mock_form_mgr_service.h"
 #include "mock_distributed_sched.h"
 #include "mock/distributed_sched_permission_mock.h"
+#include "mock/bundle_manager_internal_mock.h"
 #include "system_ability_definition.h"
 #include "test_log.h"
 #include "thread_pool.h"
@@ -85,6 +86,7 @@ public:
     int32_t InstallBundle(const std::string &bundlePath) const;
     static inline std::shared_ptr<AbilityManagerClientMock> clientMock_ = nullptr;
     static inline std::shared_ptr<AccesstokenMock> tokenMock_ = nullptr;
+    static inline std::shared_ptr<BundleManagerInternalMock> bundleMgrMock_ = nullptr;
     static inline std::shared_ptr<DistributedSchedPermMock> dmsPermMock_ = nullptr;
     sptr<IDistributedSched> proxy_;
 
@@ -117,6 +119,8 @@ void DistributedSchedServiceSecondTest::SetUpTestCase()
     AccesstokenMock::accesstokenMock_ = tokenMock_;
     dmsPermMock_ = std::make_shared<DistributedSchedPermMock>();
     DistributedSchedPermMock::dmsPermMock = dmsPermMock_;
+    bundleMgrMock_ = std::make_shared<BundleManagerInternalMock>();
+    BundleManagerInternalMock::bundleMgrMock = bundleMgrMock_;
     std::this_thread::sleep_for(std::chrono::milliseconds(SLEEP_TIME));
 }
 
@@ -128,6 +132,8 @@ void DistributedSchedServiceSecondTest::TearDownTestCase()
     tokenMock_ = nullptr;
     DistributedSchedPermMock::dmsPermMock = nullptr;
     dmsPermMock_ = nullptr;
+    BundleManagerInternalMock::bundleMgrMock = nullptr;
+    bundleMgrMock_ = nullptr;
 }
 
 void DistributedSchedServiceSecondTest::SetUp()
@@ -1910,6 +1916,8 @@ HWTEST_F(DistributedSchedServiceSecondTest, ContinueStateCallbackRegister_001, T
     std::string moduleName = "moduleName";
     std::string abilityName = "abilityName";
     sptr<IRemoteObject> callback(new MockDistributedSched());
+    EXPECT_CALL(*bundleMgrMock_, GetSpecifyBundleNameFromBms(testing::_, testing::_))
+        .WillRepeatedly(testing::DoAll(testing::SetArgReferee<1>(bundleName), testing::Return(true)));
 
     int32_t ret = DistributedSchedService::GetInstance().ContinueStateCallbackRegister(
         missionId, bundleName, moduleName, abilityName, nullptr);
@@ -1934,11 +1942,50 @@ HWTEST_F(DistributedSchedServiceSecondTest, ContinueStateCallbackUnRegister_001,
     std::string bundleName = "bundleName";
     std::string moduleName = "moduleName";
     std::string abilityName = "abilityName";
+    EXPECT_CALL(*bundleMgrMock_, GetSpecifyBundleNameFromBms(testing::_, testing::_))
+        .WillRepeatedly(testing::DoAll(testing::SetArgReferee<1>(bundleName), testing::Return(true)));
     int32_t ret = DistributedSchedService::GetInstance().ContinueStateCallbackUnRegister(
         missionId, bundleName, moduleName, abilityName);
 
     EXPECT_EQ(ret, ERR_OK);
     DTEST_LOG << "DistributedSchedServiceSecondTest ContinueStateCallbackUnRegister_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: ContinueStateCallbackRegister_002
+ * @tc.desc: caller bundle mismatch should be rejected
+ * @tc.type: FUNC
+ */
+HWTEST_F(DistributedSchedServiceSecondTest, ContinueStateCallbackRegister_002, TestSize.Level3)
+{
+    DTEST_LOG << "DistributedSchedServiceSecondTest ContinueStateCallbackRegister_002 start" << std::endl;
+    int32_t missionId = 2;
+    std::string reqBundle = "victimBundle";
+    std::string callerBundle = "attackerBundle";
+    sptr<IRemoteObject> callback(new MockDistributedSched());
+    EXPECT_CALL(*bundleMgrMock_, GetSpecifyBundleNameFromBms(testing::_, testing::_))
+        .WillRepeatedly(testing::DoAll(testing::SetArgReferee<1>(callerBundle), testing::Return(true)));
+    int32_t ret = DistributedSchedService::GetInstance().ContinueStateCallbackRegister(
+        missionId, reqBundle, "m", "a", callback);
+    EXPECT_EQ(ret, INVALID_PARAMETERS_ERR);
+    DTEST_LOG << "DistributedSchedServiceSecondTest ContinueStateCallbackRegister_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: ContinueStateCallbackRegister_003
+ * @tc.desc: bms lookup failure should be rejected (fail-closed)
+ * @tc.type: FUNC
+ */
+HWTEST_F(DistributedSchedServiceSecondTest, ContinueStateCallbackRegister_003, TestSize.Level3)
+{
+    DTEST_LOG << "DistributedSchedServiceSecondTest ContinueStateCallbackRegister_003 start" << std::endl;
+    sptr<IRemoteObject> callback(new MockDistributedSched());
+    EXPECT_CALL(*bundleMgrMock_, GetSpecifyBundleNameFromBms(testing::_, testing::_))
+        .WillRepeatedly(testing::Return(false));
+    int32_t ret = DistributedSchedService::GetInstance().ContinueStateCallbackRegister(
+        3, "anyBundle", "m", "a", callback);
+    EXPECT_EQ(ret, INVALID_PARAMETERS_ERR);
+    DTEST_LOG << "DistributedSchedServiceSecondTest ContinueStateCallbackRegister_003 end" << std::endl;
 }
 
 /**

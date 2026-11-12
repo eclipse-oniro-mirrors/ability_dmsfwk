@@ -349,6 +349,7 @@ private:
     void NotifyCollaborateEventWithSessions(const std::list<ConnectAbilitySession> &sessionsList,
         DSchedEventState state, int32_t ret);
     bool CheckCallingUid();
+    bool VerifyContinueStateCallbackCaller(const std::string &bundleName);
     int32_t ScheduleAutoUnload();
     void AutoUnloadTask();
     int32_t PrepareSvcDConnection(const DExtConnectInfo& connectInfo, AAFwk::Want& want, bool& isDelay);

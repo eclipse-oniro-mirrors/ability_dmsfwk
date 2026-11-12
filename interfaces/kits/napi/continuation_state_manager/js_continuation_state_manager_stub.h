@@ -31,12 +31,29 @@ class JsContinuationStateManagerStub : public IRemoteStub<IJsContinuationCallbac
 public:
     struct StateCallbackData {
         std::string bizType;
-        int32_t missionId;
+        int32_t missionId = -1;
         std::string moduleName;
         std::string bundleName;
         std::string abilityName;
-        napi_env env;
-        napi_ref callbackRef;
+        napi_env env = nullptr;
+        napi_ref callbackRef = nullptr;
+
+        bool operator<(const StateCallbackData &rhs) const
+        {
+            if (bizType != rhs.bizType) {
+                return bizType < rhs.bizType;
+            }
+            if (missionId != rhs.missionId) {
+                return missionId < rhs.missionId;
+            }
+            if (bundleName != rhs.bundleName) {
+                return bundleName < rhs.bundleName;
+            }
+            if (moduleName != rhs.moduleName) {
+                return moduleName < rhs.moduleName;
+            }
+            return abilityName < rhs.abilityName;
+        }
     };
 
     int32_t OnRemoteRequest(uint32_t code, MessageParcel &data, MessageParcel &reply, MessageOption &option) override;
