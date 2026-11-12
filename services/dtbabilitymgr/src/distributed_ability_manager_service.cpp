@@ -370,9 +370,6 @@ int32_t DistributedAbilityManagerService::RegisterWithoutExtraParam(int32_t& tok
         HILOGE("DISTRIBUTED_DATASYNC permission check failed!");
         return DMS_PERMISSION_DENIED;
     }
-    if (IsExceededRegisterMaxNum(accessToken)) {
-        return REGISTER_EXCEED_MAX_TIMES;
-    }
     int32_t tToken = -1;
     {
         std::lock_guard<std::mutex> tokenLock(tokenMutex_);
@@ -384,9 +381,14 @@ int32_t DistributedAbilityManagerService::RegisterWithoutExtraParam(int32_t& tok
         // save at parameters
         system::SetParameter(TOKEN_KEY, std::to_string(tToken));
     }
-    // update tokenMap_
+    // check and update tokenMap_ in the same critical section to avoid TOCTOU
     {
         std::lock_guard<std::mutex> tokenMapLock(tokenMapMutex_);
+        auto iter = tokenMap_.find(accessToken);
+        if (iter != tokenMap_.end() && iter->second.size() >= MAX_REGISTER_NUM) {
+            HILOGE("accessToken registered too much times");
+            return REGISTER_EXCEED_MAX_TIMES;
+        }
         tokenMap_[accessToken].emplace_back(tToken);
     }
     token = tToken;
@@ -445,8 +447,13 @@ int32_t DistributedAbilityManagerService::ConnectAbility(int32_t token,
         HILOGE("QueryExtensionAbilityInfo failed");
         return CONNECT_ABILITY_FAILED;
     }
-    if (connect_ == nullptr) {
-        connect_ = new AppConnectionStub(token, continuationExtraParams);
+    sptr<IRemoteObject> localConnect;
+    {
+        std::lock_guard<std::mutex> lock(connectMutex_);
+        if (connect_ == nullptr) {
+            connect_ = new AppConnectionStub(token, continuationExtraParams);
+        }
+        localConnect = connect_;
     }
     int32_t errCode = AAFwk::AbilityManagerClient::GetInstance()->Connect();
     if (errCode != ERR_OK) {
@@ -454,9 +461,10 @@ int32_t DistributedAbilityManagerService::ConnectAbility(int32_t token,
         return errCode;
     }
     errCode = AAFwk::AbilityManagerClient::GetInstance()->ConnectAbility(want,
-        iface_cast<AAFwk::IAbilityConnection>(connect_), this, activeAccountId);
+        iface_cast<AAFwk::IAbilityConnection>(localConnect), this, activeAccountId);
     if (errCode != ERR_OK) {
         HILOGE("ConnectAbility failed");
+        std::lock_guard<std::mutex> lock(connectMutex_);
         connect_ = nullptr;
         return CONNECT_ABILITY_FAILED;
     }
@@ -501,8 +509,14 @@ bool DistributedAbilityManagerService::QueryExtensionAbilityInfo(const int32_t& 
 
 int32_t DistributedAbilityManagerService::DisconnectAbility()
 {
-    if (connect_ == nullptr) {
-        return ERR_NULL_OBJECT;
+    sptr<IRemoteObject> localConnect;
+    {
+        std::lock_guard<std::mutex> lock(connectMutex_);
+        if (connect_ == nullptr) {
+            return ERR_NULL_OBJECT;
+        }
+        localConnect = connect_;
+        connect_ = nullptr;
     }
     int32_t errCode = AAFwk::AbilityManagerClient::GetInstance()->Connect();
     if (errCode != ERR_OK) {
@@ -510,8 +524,7 @@ int32_t DistributedAbilityManagerService::DisconnectAbility()
         return errCode;
     }
     errCode = AAFwk::AbilityManagerClient::GetInstance()->DisconnectAbility(
-        iface_cast<AAFwk::IAbilityConnection>(connect_));
-    connect_ = nullptr;
+        iface_cast<AAFwk::IAbilityConnection>(localConnect));
     if (errCode != ERR_OK) {
         HILOGE("DisconnectAbility failed");
         return DISCONNECT_ABILITY_FAILED;

@@ -91,6 +91,7 @@ private:
     std::map<int32_t, std::unique_ptr<NotifierInfo>> callbackMap_;
     sptr<IRemoteObject::DeathRecipient> notifierDeathRecipient_;
     sptr<IRemoteObject> connect_;
+    std::mutex connectMutex_;
     std::mutex appProxyMutex_;
     sptr<IRemoteObject> appProxy_;
     std::shared_ptr<ffrt::queue> continuationHandler_;
