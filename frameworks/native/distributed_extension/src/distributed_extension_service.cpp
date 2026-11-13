@@ -24,40 +24,59 @@ const std::string TAG = "DistributedExtensionService";
 int32_t DistributedExtensionService::TriggerOnCreate(AAFwk::Want& want)
 {
     HILOG_INFO("DistributedExtensionService::TriggerOnCreate enter");
-    if (distributedExtension_ == nullptr) {
+    std::shared_ptr<DistributedExtension> extension;
+    {
+        std::lock_guard<std::recursive_mutex> lock(serviceMutex_);
+        extension = distributedExtension_;
+    }
+    if (extension == nullptr) {
         HILOG_ERROR("distributedExtension is nullptr");
         return ERR_INVALID_VALUE;
     }
 
-    distributedExtension_->TriggerOnCreate(want);
+    extension->TriggerOnCreate(want);
     return ERR_OK;
 }
 
 int32_t DistributedExtensionService::TriggerOnDestroy()
 {
     HILOG_INFO("DistributedExtensionService::TriggerOnDestroy enter");
-    if (distributedExtension_ == nullptr) {
+    std::shared_ptr<DistributedExtension> extension;
+    {
+        std::lock_guard<std::recursive_mutex> lock(serviceMutex_);
+        extension = distributedExtension_;
+    }
+    if (extension == nullptr) {
         HILOG_ERROR("distributedExtension is nullptr");
         return ERR_INVALID_VALUE;
     }
 
-    distributedExtension_->TriggerOnDestroy();
+    extension->TriggerOnDestroy();
     return ERR_OK;
 }
 
 int32_t DistributedExtensionService::TriggerOnCollaborate(AAFwk::WantParams &wantParam)
 {
     HILOG_INFO("DistributedExtensionService::TriggerOnCollaborate enter");
-    if (distributedExtension_ == nullptr) {
+    std::shared_ptr<DistributedExtension> extension;
+    {
+        std::lock_guard<std::recursive_mutex> lock(serviceMutex_);
+        extension = distributedExtension_;
+    }
+    if (extension == nullptr) {
         HILOG_ERROR("distributedExtension is nullptr");
         return ERR_INVALID_VALUE;
     }
 
-    distributedExtension_->TriggerOnCollaborate(wantParam);
+    extension->TriggerOnCollaborate(wantParam);
     return ERR_OK;
 }
 
 void DistributedExtensionService::Clear()
-{}
+{
+    HILOG_INFO("DistributedExtensionService::Clear");
+    std::lock_guard<std::recursive_mutex> lock(serviceMutex_);
+    distributedExtension_ = nullptr;
+}
 }
 }

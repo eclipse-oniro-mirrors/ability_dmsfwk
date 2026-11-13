@@ -30,31 +30,47 @@ const std::string TAG = "NapiAbilityConnectionSessionListener";
 NapiAbilityConnectionSessionListener::NapiAbilityConnectionSessionListener()
 {
     HILOGI("called.");
+    refHolder_ = std::make_shared<RefHolder>();
 }
 
 NapiAbilityConnectionSessionListener::NapiAbilityConnectionSessionListener(napi_env env)
 {
     HILOGI("called.");
     env_ = env;
+    refHolder_ = std::make_shared<RefHolder>();
 }
 
 NapiAbilityConnectionSessionListener::~NapiAbilityConnectionSessionListener()
 {
     HILOGI("called.");
-    if (callbackRef_ && env_) {
-        auto task = [env = env_, ref = callbackRef_]() {
-            HILOGI("called.");
-            if (env == nullptr || ref == nullptr) {
-                HILOGE("Invalid env_ or callbackRef_");
-                return;
+    if (refHolder_ && refHolder_->ref != nullptr && env_ != nullptr) {
+        if (napi_send_event(env_, [holder = refHolder_]() { holder->Release(); }, napi_eprio_vip,
+            "distributedsched:~NapiAbilityConnectionSessionListener") == napi_ok) {
+            if (envCleanupCtx_ != nullptr) {
+                napi_remove_env_cleanup_hook(env_, &NapiAbilityConnectionSessionListener::EnvCleanupHook,
+                    envCleanupCtx_);
+                delete envCleanupCtx_;
+                envCleanupCtx_ = nullptr;
             }
-            napi_delete_reference(env, ref);
-        };
-        if (napi_status::napi_ok != napi_send_event(env_, task, napi_eprio_vip,
-            "distributedsched:~NapiAbilityConnectionSessionListener")) {
-            HILOGE("send event failed!");
+        } else {
+            HILOGE("send event failed; reference will be released by env cleanup hook");
+            if (refHolder_->hookFired && envCleanupCtx_ != nullptr) {
+                delete envCleanupCtx_;
+                envCleanupCtx_ = nullptr;
+            }
         }
     }
+}
+
+void NapiAbilityConnectionSessionListener::EnvCleanupHook(void* arg)
+{
+    auto* ctx = static_cast<EnvCleanupCtx*>(arg);
+    if (ctx == nullptr || ctx->holder == nullptr) {
+        return;
+    }
+    ctx->holder->Release();
+    std::lock_guard<std::mutex> lock(ctx->holder->mtx);
+    ctx->holder->hookFired = true;
 }
 
 void NapiAbilityConnectionSessionListener::SetCallback(const napi_value& jsListenerObj)
@@ -64,17 +80,24 @@ void NapiAbilityConnectionSessionListener::SetCallback(const napi_value& jsListe
         HILOGE("env_ is nullptr");
         return;
     }
-    
+
     if (callbackRef_) {
         HILOGE("the callbackRef has been set.");
         return;
     }
-    
+
     napi_status status = napi_create_reference(env_, jsListenerObj, 1, &callbackRef_);
     if (status != napi_ok || callbackRef_ == nullptr) {
         HILOGE("Failed to create reference, status is %{public}d", static_cast<int32_t>(status));
         return;
     }
+    if (refHolder_ && envCleanupCtx_ == nullptr) {
+        std::lock_guard<std::mutex> lock(refHolder_->mtx);
+        refHolder_->env = env_;
+        refHolder_->ref = callbackRef_;
+    }
+    envCleanupCtx_ = new EnvCleanupCtx{refHolder_};
+    napi_add_env_cleanup_hook(env_, &NapiAbilityConnectionSessionListener::EnvCleanupHook, envCleanupCtx_);
 }
 
 void NapiAbilityConnectionSessionListener::CallJsMethod(const EventCallbackInfo& eventCallbackInfo)
@@ -137,20 +160,31 @@ template <typename T>
 void NapiAbilityConnectionSessionListener::CallJsMethodInnerTemplate(const T& callbackInfo)
 {
     HILOGI("called.");
-    if (env_ == nullptr || callbackRef_ == nullptr) {
+    if (env_ == nullptr || refHolder_ == nullptr) {
+        HILOGE("Invalid env_ or callbackRef_");
+        return;
+    }
+    napi_env env = nullptr;
+    napi_ref ref = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(refHolder_->mtx);
+        env = refHolder_->env;
+        ref = refHolder_->ref;
+    }
+    if (env == nullptr || ref == nullptr) {
         HILOGE("Invalid env_ or callbackRef_");
         return;
     }
 
     napi_value callback = nullptr;
-    napi_status status = napi_get_reference_value(env_, callbackRef_, &callback);
+    napi_status status = napi_get_reference_value(env, ref, &callback);
     if (status != napi_ok || callback == nullptr) {
         HILOGE("Failed to get callback from reference, status is %{public}d", static_cast<int32_t>(status));
         return;
     }
 
-    napi_value argv[] = { WrapEventCallbackInfo(env_, callbackInfo) };
-    status = napi_call_function(env_, CreateJsUndefined(env_), callback, ArraySize(argv), argv, nullptr);
+    napi_value argv[] = { WrapEventCallbackInfo(env, callbackInfo) };
+    status = napi_call_function(env, CreateJsUndefined(env), callback, ArraySize(argv), argv, nullptr);
     if (status != napi_ok) {
         HILOGE("Failed to call JS function, status is %{public}d", static_cast<int32_t>(status));
     }

@@ -16,6 +16,7 @@
 #ifndef OHOS_APPMGMT_DISTRIBUTED_EXTENSION_SERVICE_H
 #define OHOS_APPMGMT_DISTRIBUTED_EXTENSION_SERVICE_H
 
+#include <mutex>
 #include <string>
 
 #include "distributed_extension_js.h"
@@ -47,6 +48,7 @@ public:
     }
 
 private:
+    mutable std::recursive_mutex serviceMutex_;
     std::shared_ptr<DistributedExtension> distributedExtension_;
     std::string bundleName_;
 };

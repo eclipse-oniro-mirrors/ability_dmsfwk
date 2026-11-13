@@ -760,7 +760,7 @@ napi_value JsAbilityConnectionManager::GetPeerInfoById(napi_env env, napi_callba
     PeerInfo peerInfo;
     int32_t ret = AbilityConnectionManager::GetInstance().getPeerInfoBySessionId(sessionId, peerInfo);
     if (ret != ERR_OK) {
-        HILOGE("get peerInfo failed!");
+        HILOGE("get peerInfo failed, ret: %{public}d (session may not exist or not connected)", ret);
         napi_value undefinedValue;
         napi_get_undefined(env, &undefinedValue);
         return undefinedValue;
@@ -1428,6 +1428,7 @@ napi_value JsAbilityConnectionManager::SendImage(napi_env env, napi_callback_inf
     if (!IsSystemApp()) {
         HILOGE("Permission verification failed.");
         CreateBusinessError(env, ERR_IS_NOT_SYSTEM_APP);
+        return nullptr;
     }
 
     napi_deferred deferred;
@@ -1515,6 +1516,7 @@ napi_value JsAbilityConnectionManager::CreateStream(napi_env env, napi_callback_
     if (!IsSystemApp()) {
         HILOGE("Permission verification failed.");
         CreateBusinessError(env, ERR_IS_NOT_SYSTEM_APP);
+        return nullptr;
     }
 
     napi_deferred deferred;
@@ -1538,6 +1540,7 @@ napi_value JsAbilityConnectionManager::CreateStream(napi_env env, napi_callback_
     StreamParams streamParam;
     if (!JsToStreamParam(env, argv[ARG_INDEX_ONE], streamParam)) {
         HILOGE("Failed to unwrap streamParam.");
+        napi_reject_deferred(env, deferred, CreateBusinessError(env, ERR_INVALID_PARAMETERS, false));
         return promise;
     }
 
@@ -1729,6 +1732,7 @@ napi_value JsAbilityConnectionManager::SetSurfaceId(napi_env env, napi_callback_
     if (!IsSystemApp()) {
         HILOGE("Permission verification failed.");
         CreateBusinessError(env, ERR_IS_NOT_SYSTEM_APP);
+        return nullptr;
     }
 
     GET_PARAMS(env, info, ARG_COUNT_THREE);
@@ -1824,6 +1828,7 @@ napi_value JsAbilityConnectionManager::GetSurfaceId(napi_env env, napi_callback_
     if (!IsSystemApp()) {
         HILOGE("Permission verification failed.");
         CreateBusinessError(env, ERR_IS_NOT_SYSTEM_APP);
+        return nullptr;
     }
 
     GET_PARAMS(env, info, ARG_COUNT_TWO);
@@ -1866,6 +1871,7 @@ napi_value JsAbilityConnectionManager::UpdateSurfaceParam(napi_env env, napi_cal
     if (!IsSystemApp()) {
         HILOGE("Permission verification failed.");
         CreateBusinessError(env, ERR_IS_NOT_SYSTEM_APP);
+        return nullptr;
     }
 
     GET_PARAMS(env, info, ARG_COUNT_TWO);
@@ -1903,6 +1909,7 @@ napi_value JsAbilityConnectionManager::DestroyStream(napi_env env, napi_callback
     if (!IsSystemApp()) {
         HILOGE("Permission verification failed.");
         CreateBusinessError(env, ERR_IS_NOT_SYSTEM_APP);
+        return nullptr;
     }
 
     GET_PARAMS(env, info, ARG_COUNT_ONE);
@@ -1933,6 +1940,7 @@ napi_value JsAbilityConnectionManager::StartStream(napi_env env, napi_callback_i
     if (!IsSystemApp()) {
         HILOGE("Permission verification failed.");
         CreateBusinessError(env, ERR_IS_NOT_SYSTEM_APP);
+        return nullptr;
     }
 
     GET_PARAMS(env, info, ARG_COUNT_ONE);
@@ -1963,6 +1971,7 @@ napi_value JsAbilityConnectionManager::StopStream(napi_env env, napi_callback_in
     if (!IsSystemApp()) {
         HILOGE("Permission verification failed.");
         CreateBusinessError(env, ERR_IS_NOT_SYSTEM_APP);
+        return nullptr;
     }
 
     GET_PARAMS(env, info, ARG_COUNT_ONE);

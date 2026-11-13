@@ -40,6 +40,10 @@ AniContinuationStateManagerStub::~AniContinuationStateManagerStub()
         auto task = [callbackRef]() {
             ani_env *env = taihe::get_env();
             if (env == nullptr) {
+                taihe::env_guard guard;
+                env = guard.get_env();
+            }
+            if (env == nullptr) {
                 HILOGE("Env is null in destructor callback cleanup");
                 return;
             }

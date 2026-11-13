@@ -16,7 +16,10 @@
 #ifndef OHOS_DISTRIBUTED_ABILITY_CONNECTION_MANAGER_NAPI_ABILITY_CONNECTION_SESSION_LISTENER_H
 #define OHOS_DISTRIBUTED_ABILITY_CONNECTION_MANAGER_NAPI_ABILITY_CONNECTION_SESSION_LISTENER_H
 
+#include <atomic>
 #include <map>
+#include <memory>
+#include <mutex>
 
 #include "ability_connection_info.h"
 #include "native_engine/native_engine.h"
@@ -49,8 +52,29 @@ private:
     napi_value WrapAVTransDataBuffer(napi_env& env, const std::shared_ptr<AVTransDataBuffer>& dataBuffer);
 
 private:
+    struct RefHolder {
+        std::mutex mtx;
+        napi_env env = nullptr;
+        napi_ref ref = nullptr;
+        bool hookFired = false;
+        void Release()
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            if (env != nullptr && ref != nullptr) {
+                napi_delete_reference(env, ref);
+                ref = nullptr;
+            }
+        }
+    };
+    struct EnvCleanupCtx {
+        std::shared_ptr<RefHolder> holder;
+    };
+    static void EnvCleanupHook(void* arg);
+
     napi_env env_ = nullptr;
     napi_ref callbackRef_ = nullptr;
+    std::shared_ptr<RefHolder> refHolder_;
+    EnvCleanupCtx* envCleanupCtx_ = nullptr;
 };
 } // namespace DistributedCollab
 } // namespace OHOS
