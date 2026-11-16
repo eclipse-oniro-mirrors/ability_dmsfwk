@@ -1315,5 +1315,70 @@ HWTEST_F(DistributedAbilityManagerServiceTest, StartDeviceManagerWithoutExtraPar
     EXPECT_EQ(ret, ERR_OK);
     DTEST_LOG << "DistributedAbilityManagerServiceTest StartDeviceManagerWithoutExtraParam_001 end" << std::endl;
 }
+
+/**
+ * @tc.name: RegisterWithoutExtraParam_002
+ * @tc.desc: test RegisterWithoutExtraParam returns REGISTER_EXCEED_MAX_TIMES when tokenMap_ reaches the limit
+ *           (check + insert atomic in single critical section, bug14 fix branch).
+ *           Note: requires AccessTokenKit service; skipped in QEMU host env where permission check fails.
+ * @tc.type: FUNC
+ */
+HWTEST_F(DistributedAbilityManagerServiceTest, RegisterWithoutExtraParam_002, TestSize.Level3)
+{
+    DTEST_LOG << "DistributedAbilityManagerServiceTest RegisterWithoutExtraParam_002 start" << std::endl;
+    ASSERT_NE(nullptr, dtbabilitymgrService_);
+    // First call Register() to establish permission context
+    std::shared_ptr<ContinuationExtraParams> continuationExtraParams = std::make_shared<ContinuationExtraParams>();
+    int32_t baseToken = 0;
+    int32_t regRet = dtbabilitymgrService_->Register(continuationExtraParams, baseToken);
+    if (regRet != ERR_OK) {
+        DTEST_LOG << "Skip: permission check failed in test env (ret=" << regRet << ")" << std::endl;
+        {
+            std::lock_guard<std::mutex> tokenMapLock(dtbabilitymgrService_->tokenMapMutex_);
+            dtbabilitymgrService_->tokenMap_.clear();
+        }
+        return; // Skip in envs where AccessTokenKit is unavailable
+    }
+
+    // Fill tokenMap_ to the limit for the calling accessToken
+    {
+        std::lock_guard<std::mutex> tokenMapLock(dtbabilitymgrService_->tokenMapMutex_);
+        for (auto &pair : dtbabilitymgrService_->tokenMap_) {
+            pair.second.clear();
+            pair.second.resize(MAX_REGISTER_NUM);
+        }
+    }
+    int32_t token = 0;
+    int32_t ret = dtbabilitymgrService_->RegisterWithoutExtraParam(token);
+    EXPECT_EQ(ret, REGISTER_EXCEED_MAX_TIMES);
+    // cleanup
+    {
+        std::lock_guard<std::mutex> tokenMapLock(dtbabilitymgrService_->tokenMapMutex_);
+        dtbabilitymgrService_->tokenMap_.clear();
+    }
+    {
+        std::lock_guard<std::mutex> callbackMapLock(dtbabilitymgrService_->callbackMapMutex_);
+        dtbabilitymgrService_->callbackMap_.clear();
+    }
+    DTEST_LOG << "DistributedAbilityManagerServiceTest RegisterWithoutExtraParam_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: DisconnectAbility_002
+ * @tc.desc: test DisconnectAbility returns ERR_NULL_OBJECT when connect_ is nullptr (bug6 connect_ locked branch).
+ * @tc.type: FUNC
+ */
+HWTEST_F(DistributedAbilityManagerServiceTest, DisconnectAbility_002, TestSize.Level3)
+{
+    DTEST_LOG << "DistributedAbilityManagerServiceTest DisconnectAbility_002 start" << std::endl;
+    ASSERT_NE(nullptr, dtbabilitymgrService_);
+    {
+        std::lock_guard<std::mutex> connectLock(dtbabilitymgrService_->connectMutex_);
+        dtbabilitymgrService_->connect_ = nullptr;
+    }
+    int32_t ret = dtbabilitymgrService_->DisconnectAbility();
+    EXPECT_EQ(ret, ERR_NULL_OBJECT);
+    DTEST_LOG << "DistributedAbilityManagerServiceTest DisconnectAbility_002 end" << std::endl;
+}
 }
 }
