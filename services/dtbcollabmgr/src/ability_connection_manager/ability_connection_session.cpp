@@ -1222,8 +1222,14 @@ int32_t AbilityConnectionSession::ConnectStreamChannel()
         return ERR_OK;
     }
 
-    std::thread task([this, info]() {
-        DoConnectStreamChannel(info.channelId);
+    std::weak_ptr<AbilityConnectionSession> weakSelf = shared_from_this();
+    std::thread task([weakSelf, info]() {
+        auto self = weakSelf.lock();
+        if (self == nullptr) {
+            HILOGI("session released, skip connect stream channel.");
+            return;
+        }
+        self->DoConnectStreamChannel(info.channelId);
     });
     task.detach();
     return ERR_OK;
@@ -1389,9 +1395,15 @@ void AbilityConnectionSession::OnMessageReceived(int32_t channelId, const std::s
         dataBuffer->Size() - MessageDataHeader::HEADER_LEN);
     HILOGI("headerPara type is %{public}d", headerPara->dataType_);
     // common handler
-    auto handler = [this, msg](uint32_t dataType) {
-        auto iter = messageHandlerMap_.find(dataType);
-        if (iter != messageHandlerMap_.end()) {
+    std::weak_ptr<AbilityConnectionSession> weakSelf = shared_from_this();
+    auto handler = [weakSelf, msg](uint32_t dataType) {
+        auto self = weakSelf.lock();
+        if (self == nullptr) {
+            HILOGI("session released, skip message handler.");
+            return;
+        }
+        auto iter = self->messageHandlerMap_.find(dataType);
+        if (iter != self->messageHandlerMap_.end()) {
             iter->second(msg);
         } else {
             HILOGE("unhandled code!");
