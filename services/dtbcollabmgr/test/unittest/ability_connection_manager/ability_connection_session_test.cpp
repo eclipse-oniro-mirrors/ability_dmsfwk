@@ -27,11 +27,25 @@
 #include "message_data_header.h"
 #include "pixel_map.h"
 
+#include <chrono>
+#include <future>
+
 using namespace testing;
 using namespace testing::ext;
 
 namespace {
     const int32_t WAITTIME = 10000;
+    // Constants for the detach-thread UAF regression tests.
+    const int32_t TEST_SESSION_ID = 2;
+    const int32_t TEST_CHANNEL_ID = 31;
+    const int32_t ASYNC_HANDLER_SLEEP_MS = 100;
+    const int32_t FUTURE_WAIT_TIMEOUT_S = 2;
+    const int32_t RELEASE_SETTLE_MS = 300;
+    const int32_t STRESS_LOOP_COUNT = 50;
+    const int32_t STRESS_SESSION_ID_BASE = 100;
+    const int32_t STRESS_CHANNEL_ID_BASE = 200;
+    const int32_t STREAM_SESSION_ID_BASE = 300;
+    const int32_t STRESS_SETTLE_MS = 200;
 }
 
 namespace OHOS {
@@ -1020,6 +1034,133 @@ HWTEST_F(AbilityConnectionSessionTest, SendMessageSync_Test_001, TestSize.Level3
     int32_t ret = connectionSesion_->SendMessageSync("SESSION_CONNECT_SUCCESS", MessageType::SESSION_CONNECT_SUCCESS);
     EXPECT_EQ(ret, INVALID_PARAMETERS_ERR);
     DTEST_LOG << "AbilityConnectionSessionTest SendMessageSync_Test_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: OnMessageReceived_AsyncDetachHandler_NoUafWhenReleased_Test_001
+ * @tc.desc: Verify the weak_ptr-guarded async message handler (fix for the
+ *           std::thread(handler, ...).detach() + raw-this UAF) keeps the session alive while
+ *           the handler runs and does not use-after-free when the caller releases its reference.
+ * @tc.type: FUNC
+ * @tc.require: I6SJQ6
+ */
+HWTEST_F(AbilityConnectionSessionTest, OnMessageReceived_AsyncDetachHandler_NoUafWhenReleased_Test_001,
+    TestSize.Level3)
+{
+    DTEST_LOG << "OnMessageReceived_AsyncDetachHandler_NoUafWhenReleased_Test_001 begin" << std::endl;
+    PeerInfo peerInfo = {"", "bn", "mn", "an", "sid"};
+    PeerInfo localInfo = {"", "bn1", "mn1", "an1", "sid1"};
+    AbilityConnectionSessionInfo info{"test", localInfo, peerInfo};
+    ConnectOption options;
+    auto session = std::make_shared<AbilityConnectionSession>(TEST_SESSION_ID, "serverSocketName", info, options);
+    ASSERT_NE(session, nullptr);
+
+    // Inject a handler that sets a latch then sleeps, keeping the detached thread busy so we can
+    // race session release against the still-running handler.
+    auto promisePtr = std::make_shared<std::promise<bool>>();
+    std::future<bool> fut = promisePtr->get_future();
+    session->messageHandlerMap_[static_cast<uint32_t>(MessageType::CONNECT_FILE_CHANNEL)] =
+        [promisePtr](const std::string&) {
+            promisePtr->set_value(true);
+            std::this_thread::sleep_for(std::chrono::milliseconds(ASYNC_HANDLER_SLEEP_MS));
+        };
+
+    // Make IsVaildChannel pass; deliberately do NOT register a SEND_FILE channel so
+    // GetTransChannelInfo(SEND_FILE) fails -> the std::thread(handler, ...).detach() path runs.
+    int32_t channelId = TEST_CHANNEL_ID;
+    TransChannelInfo chInfo;
+    chInfo.channelId = channelId;
+    session->transChannels_[TransChannelType::MESSAGE] = chInfo;
+
+    MessageDataHeader header(MessageDataHeader::PROTOCOL_VERSION,
+        static_cast<uint32_t>(MessageType::CONNECT_FILE_CHANNEL), 0);
+    std::shared_ptr<AVTransDataBuffer> dataBuffer;
+    dataBuffer = header.Serialize();
+    ASSERT_NE(dataBuffer, nullptr);
+    EXPECT_NO_FATAL_FAILURE(session->OnMessageReceived(channelId, dataBuffer));
+
+    // Alive path: the detached thread locked the weak_ptr, ran the handler, set the latch.
+    EXPECT_EQ(fut.wait_for(std::chrono::seconds(FUTURE_WAIT_TIMEOUT_S)), std::future_status::ready);
+    EXPECT_TRUE(fut.get());
+
+    // Release the test's reference while the handler is still sleeping. With the weak_ptr fix,
+    // the detached thread holds a shared_ptr (from lock()) for the handler's duration, so the
+    // object is not destroyed here; it is destroyed only after the thread exits. No UAF.
+    session.reset();
+    std::this_thread::sleep_for(std::chrono::milliseconds(RELEASE_SETTLE_MS));
+    DTEST_LOG << "OnMessageReceived_AsyncDetachHandler_NoUafWhenReleased_Test_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: OnMessageReceived_AsyncDetachHandler_StressRelease_Test_001
+ * @tc.desc: Stress/amplification for the "session released before the detached thread locks the
+ *           weak_ptr" case. Run under AddressSanitizer to catch UAF regressions; the weak_ptr
+ *           fix makes the handler bail safely (lock() returns nullptr) when the session is gone.
+ * @tc.type: FUNC
+ * @tc.require: I6SJQ6
+ */
+HWTEST_F(AbilityConnectionSessionTest, OnMessageReceived_AsyncDetachHandler_StressRelease_Test_001, TestSize.Level3)
+{
+    DTEST_LOG << "OnMessageReceived_AsyncDetachHandler_StressRelease_Test_001 begin" << std::endl;
+    PeerInfo peerInfo = {"", "bn", "mn", "an", "sid"};
+    PeerInfo localInfo = {"", "bn1", "mn1", "an1", "sid1"};
+    AbilityConnectionSessionInfo info{"test", localInfo, peerInfo};
+    ConnectOption options;
+    MessageDataHeader header(MessageDataHeader::PROTOCOL_VERSION,
+        static_cast<uint32_t>(MessageType::CONNECT_FILE_CHANNEL), 0);
+    std::shared_ptr<AVTransDataBuffer> dataBuffer;
+    dataBuffer = header.Serialize();
+    ASSERT_NE(dataBuffer, nullptr);
+    constexpr int32_t loop = STRESS_LOOP_COUNT;
+    for (int32_t i = 0; i < loop; ++i) {
+        auto session = std::make_shared<AbilityConnectionSession>(STRESS_SESSION_ID_BASE + i,
+            "serverSocketName", info, options);
+        // No-op handler: exercise only the weak_ptr lock / bail path, avoid ConnectFileChannel deps.
+        session->messageHandlerMap_[static_cast<uint32_t>(MessageType::CONNECT_FILE_CHANNEL)] =
+            [](const std::string&) {};
+        int32_t channelId = STRESS_CHANNEL_ID_BASE + i;
+        TransChannelInfo chInfo;
+        chInfo.channelId = channelId;
+        session->transChannels_[TransChannelType::MESSAGE] = chInfo;
+        EXPECT_NO_FATAL_FAILURE(session->OnMessageReceived(channelId, dataBuffer));
+        session.reset(); // race: detach thread may lock weak_ptr before or after this
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(STRESS_SETTLE_MS));
+    DTEST_LOG << "OnMessageReceived_AsyncDetachHandler_StressRelease_Test_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: ConnectStreamChannel_DetachThread_Smoke_Test_001
+ * @tc.desc: Smoke test for the ConnectStreamChannel detached-thread path (fix for the
+ *           detach + raw-this UAF). NOTE: this does NOT reproduce the UAF -- in the unit-test
+ *           environment ChannelManager::ConnectChannel fails fast, so DoConnectStreamChannel
+ *           returns before touching this->recvEngine_ / UpdateTransChannelStatus (the members
+ *           that would UAF). Deterministic UAF coverage requires mocking ChannelManager
+ *           (currently `final` + singleton).
+ * @tc.type: FUNC
+ * @tc.require: I6SJQ6
+ */
+HWTEST_F(AbilityConnectionSessionTest, ConnectStreamChannel_DetachThread_Smoke_Test_001, TestSize.Level3)
+{
+    DTEST_LOG << "AbilityConnectionSessionTest ConnectStreamChannel_DetachThread_Smoke_Test_001 begin" << std::endl;
+    PeerInfo peerInfo = {"", "bn", "mn", "an", "sid"};
+    PeerInfo localInfo = {"", "bn1", "mn1", "an1", "sid1"};
+    AbilityConnectionSessionInfo info{"test", localInfo, peerInfo};
+    ConnectOption options;
+    options.needSendStream = true;
+    constexpr int32_t loop = STRESS_LOOP_COUNT;
+    for (int32_t i = 0; i < loop; ++i) {
+        auto session = std::make_shared<AbilityConnectionSession>(STREAM_SESSION_ID_BASE + i,
+            "serverSocketName", info, options);
+        session->direction_ = CollabrateDirection::COLLABRATE_SOURCE;
+        TransChannelInfo chInfo;
+        chInfo.isConnected = false;
+        session->transChannels_[TransChannelType::STREAM] = chInfo;
+        EXPECT_EQ(session->ConnectStreamChannel(), ERR_OK);
+        session.reset();
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(STRESS_SETTLE_MS));
+    DTEST_LOG << "AbilityConnectionSessionTest ConnectStreamChannel_DetachThread_Smoke_Test_001 end" << std::endl;
 }
 }
 }
