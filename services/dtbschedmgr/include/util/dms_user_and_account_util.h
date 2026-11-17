@@ -32,6 +32,7 @@ public:
     static ErrCode GetAccountInfoFromUserId(int32_t userId, OHOS::AccountSA::OhosAccountInfo& accountInfo);
     static ErrCode GetUserIdFromCallingUid(int32_t callingUid, int32_t& userId);
     static ErrCode GetAccountInfoFromCallingUid(int32_t callingUid, OHOS::AccountSA::OhosAccountInfo& accountInfo);
+    static std::string GetAccountIdByUserId(int32_t userId);
 
 private:
     DmsUserAndAccountUtil() = default;

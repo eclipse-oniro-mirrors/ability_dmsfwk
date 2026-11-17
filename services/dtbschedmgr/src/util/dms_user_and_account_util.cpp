@@ -16,6 +16,7 @@
 #include "util/dms_user_and_account_util.h"
 #include "dtbschedmgr_log.h"
 #include "os_account_manager.h"
+#include "os_account_subprofile_client.h"
 #include "distributed_sched_utils.h"
 
 namespace OHOS {

@@ -35,6 +35,7 @@
 #include "dtbschedmgr_log.h"
 #include "json_util.h"
 #include "softbus_adapter/transport/dsched_transport_softbus_adapter.h"
+#include "util/dms_user_and_account_util.h"
 
 namespace OHOS {
 namespace DistributedSchedule {
