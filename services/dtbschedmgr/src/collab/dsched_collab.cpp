@@ -130,6 +130,7 @@ DSchedCollab::DSchedCollab(std::shared_ptr<GetSinkCollabVersionCmd> startCmd, co
 void DSchedCollab::SetSrcCollabInfo(DSchedCollabInfo &info)
 {
     HILOGI("called");
+    std::lock_guard<std::mutex> infoLock(collabInfoMutex_);
     info.srcClientCB_ = collabInfo_.srcClientCB_;
     collabInfo_ = info;
     HILOGI("end");
@@ -142,27 +143,30 @@ void DSchedCollab::SetSinkCollabInfo(std::shared_ptr<SinkStartCmd> startCmd)
         HILOGE("startCmd is null");
         return;
     }
-    collabInfo_.srcCollabVersion_ = startCmd->collabVersion_;
-    collabInfo_.srcOpt_.needSendBigData_ = startCmd->needSendBigData_;
-    collabInfo_.srcOpt_.needSendStream_ = startCmd->needSendStream_;
-    collabInfo_.srcOpt_.needRecvStream_ = startCmd->needRecvStream_;
-    collabInfo_.srcOpt_.startParams_ = startCmd->startParams_;
-    collabInfo_.srcOpt_.messageParams_ = startCmd->messageParams_;
-    collabInfo_.srcInfo_.deviceId_ = startCmd->srcDeviceId_;
-    collabInfo_.srcInfo_.bundleName_ = startCmd->srcBundleName_;
-    collabInfo_.srcInfo_.abilityName_ = startCmd->srcAbilityName_;
-    collabInfo_.srcInfo_.moduleName_ = startCmd->srcModuleName_;
-    collabInfo_.srcInfo_.serverId_ = startCmd->srcServerId_;
-    collabInfo_.srcInfo_.pid_ = startCmd->srcPid_;
-    collabInfo_.srcInfo_.uid_ = startCmd->srcUid_;
-    collabInfo_.srcInfo_.accessToken_ = startCmd->srcAccessToken_;
-    collabInfo_.sinkInfo_.deviceId_ = startCmd->sinkDeviceId_;
-    collabInfo_.sinkInfo_.bundleName_ = startCmd->sinkBundleName_;
-    collabInfo_.sinkInfo_.abilityName_ = startCmd->sinkAbilityName_;
-    collabInfo_.srcAppVersion_ = startCmd->appVersion_;
-    collabInfo_.callerInfo_ = startCmd->callerInfo_;
-    collabInfo_.callerInfo_.accessToken = static_cast<uint32_t>(collabInfo_.srcInfo_.accessToken_);
-    collabInfo_.srcAccountInfo_ = startCmd->accountInfo_;
+    {
+        std::lock_guard<std::mutex> infoLock(collabInfoMutex_);
+        collabInfo_.srcCollabVersion_ = startCmd->collabVersion_;
+        collabInfo_.srcOpt_.needSendBigData_ = startCmd->needSendBigData_;
+        collabInfo_.srcOpt_.needSendStream_ = startCmd->needSendStream_;
+        collabInfo_.srcOpt_.needRecvStream_ = startCmd->needRecvStream_;
+        collabInfo_.srcOpt_.startParams_ = startCmd->startParams_;
+        collabInfo_.srcOpt_.messageParams_ = startCmd->messageParams_;
+        collabInfo_.srcInfo_.deviceId_ = startCmd->srcDeviceId_;
+        collabInfo_.srcInfo_.bundleName_ = startCmd->srcBundleName_;
+        collabInfo_.srcInfo_.abilityName_ = startCmd->srcAbilityName_;
+        collabInfo_.srcInfo_.moduleName_ = startCmd->srcModuleName_;
+        collabInfo_.srcInfo_.serverId_ = startCmd->srcServerId_;
+        collabInfo_.srcInfo_.pid_ = startCmd->srcPid_;
+        collabInfo_.srcInfo_.uid_ = startCmd->srcUid_;
+        collabInfo_.srcInfo_.accessToken_ = startCmd->srcAccessToken_;
+        collabInfo_.sinkInfo_.deviceId_ = startCmd->sinkDeviceId_;
+        collabInfo_.sinkInfo_.bundleName_ = startCmd->sinkBundleName_;
+        collabInfo_.sinkInfo_.abilityName_ = startCmd->sinkAbilityName_;
+        collabInfo_.srcAppVersion_ = startCmd->appVersion_;
+        collabInfo_.callerInfo_ = startCmd->callerInfo_;
+        collabInfo_.callerInfo_.accessToken = static_cast<uint32_t>(collabInfo_.srcInfo_.accessToken_);
+        collabInfo_.srcAccountInfo_ = startCmd->accountInfo_;
+    }
 
 #ifdef OS_ACCOUNT_PART
     std::vector<int32_t> ids;
@@ -171,9 +175,12 @@ void DSchedCollab::SetSinkCollabInfo(std::shared_ptr<SinkStartCmd> startCmd)
         HILOGE("Get userId from active Os AccountIds fail, ret : %{public}d", ret);
         return;
     }
-    collabInfo_.sinkUserId_ = ids[0];
+    {
+        std::lock_guard<std::mutex> infoLock(collabInfoMutex_);
+        collabInfo_.sinkUserId_ = ids[0];
+    }
 #endif
-    HILOGI("created successfully. collabInfo: %{public}s", collabInfo_.ToString().c_str());
+    HILOGI("created successfully. collabInfo: %{public}s", GetCollabInfo().ToString().c_str());
 }
 
 DSchedCollab::~DSchedCollab()
@@ -336,12 +343,15 @@ int32_t DSchedCollab::PostSinkPrepareResultTask(const int32_t &result, const DSc
         HILOGE("eventHandler is nullptr");
         return INVALID_PARAMETERS_ERR;
     }
-    collabInfo_.sinkCollabSessionId_ = dSchedCollabInfo.sinkCollabSessionId_;
-    collabInfo_.sinkInfo_.socketName_ = dSchedCollabInfo.sinkInfo_.socketName_;
-    collabInfo_.sinkClientCB_ = dSchedCollabInfo.sinkClientCB_;
-    collabInfo_.sinkInfo_.uid_ = dSchedCollabInfo.sinkInfo_.uid_;
-    collabInfo_.sinkInfo_.pid_ = dSchedCollabInfo.sinkInfo_.pid_;
-    collabInfo_.sinkInfo_.accessToken_ = dSchedCollabInfo.sinkInfo_.accessToken_;
+    {
+        std::lock_guard<std::mutex> infoLock(collabInfoMutex_);
+        collabInfo_.sinkCollabSessionId_ = dSchedCollabInfo.sinkCollabSessionId_;
+        collabInfo_.sinkInfo_.socketName_ = dSchedCollabInfo.sinkInfo_.socketName_;
+        collabInfo_.sinkClientCB_ = dSchedCollabInfo.sinkClientCB_;
+        collabInfo_.sinkInfo_.uid_ = dSchedCollabInfo.sinkInfo_.uid_;
+        collabInfo_.sinkInfo_.pid_ = dSchedCollabInfo.sinkInfo_.pid_;
+        collabInfo_.sinkInfo_.accessToken_ = dSchedCollabInfo.sinkInfo_.accessToken_;
+    }
     auto data = std::make_shared<int32_t>(result);
     DSchedCollabEventType eventType = NOTIFY_PREPARE_RESULT_EVENT;
     auto msgEvent = AppExecFwk::InnerEvent::Get(eventType, data, 0);
@@ -356,7 +366,7 @@ int32_t DSchedCollab::PostSinkPrepareResultTask(const int32_t &result, const DSc
 int32_t DSchedCollab::PostSrcResultTask(std::shared_ptr<NotifyResultCmd> notifyResultCmd)
 {
     std::lock_guard<std::mutex> lock(eventMutex_);
-    HILOGI("called, collabInfo %{public}s", collabInfo_.ToString().c_str());
+    HILOGI("called, collabInfo %{public}s", GetCollabInfo().ToString().c_str());
     if (eventHandler_ == nullptr) {
         HILOGE("eventHandler is nullptr");
         return INVALID_PARAMETERS_ERR;
@@ -371,16 +381,19 @@ int32_t DSchedCollab::PostSrcResultTask(std::shared_ptr<NotifyResultCmd> notifyR
         }
         return ERR_OK;
     }
-    collabInfo_.sinkCollabSessionId_ = notifyResultCmd->sinkCollabSessionId_;
-    collabInfo_.sinkInfo_.socketName_ = notifyResultCmd->sinkSocketName_;
-    collabInfo_.sinkInfo_.pid_ = notifyResultCmd->sinkPid_;
-    collabInfo_.sinkInfo_.accessToken_ = notifyResultCmd->sinkAccessToken_;
-    collabInfo_.sinkUserId_ = notifyResultCmd->sinkUserId_;
-    collabInfo_.sinkAccountId_ = notifyResultCmd->sinkAccountId_;
-    collabInfo_.sinkUdid_ = DtbschedmgrDeviceInfoStorage::GetInstance().GetUdidByNetworkId(
-        collabInfo_.sinkInfo_.deviceId_);
-    collabInfo_.srcUdid_ = DtbschedmgrDeviceInfoStorage::GetInstance().GetUdidByNetworkId(
-        collabInfo_.srcInfo_.deviceId_);
+    {
+        std::lock_guard<std::mutex> infoLock(collabInfoMutex_);
+        collabInfo_.sinkCollabSessionId_ = notifyResultCmd->sinkCollabSessionId_;
+        collabInfo_.sinkInfo_.socketName_ = notifyResultCmd->sinkSocketName_;
+        collabInfo_.sinkInfo_.pid_ = notifyResultCmd->sinkPid_;
+        collabInfo_.sinkInfo_.accessToken_ = notifyResultCmd->sinkAccessToken_;
+        collabInfo_.sinkUserId_ = notifyResultCmd->sinkUserId_;
+        collabInfo_.sinkAccountId_ = notifyResultCmd->sinkAccountId_;
+        collabInfo_.sinkUdid_ = DtbschedmgrDeviceInfoStorage::GetInstance().GetUdidByNetworkId(
+            collabInfo_.sinkInfo_.deviceId_);
+        collabInfo_.srcUdid_ = DtbschedmgrDeviceInfoStorage::GetInstance().GetUdidByNetworkId(
+            collabInfo_.srcInfo_.deviceId_);
+    }
     DSchedCollabEventType eventType = NOTIFY_RESULT_EVENT;
     auto data = std::make_shared<int32_t>(notifyResultCmd->result_);
     auto msgEvent = AppExecFwk::InnerEvent::Get(eventType, data, 0);
@@ -393,7 +406,7 @@ int32_t DSchedCollab::PostSrcResultTask(std::shared_ptr<NotifyResultCmd> notifyR
 
 int32_t DSchedCollab::PostErrEndTask(const int32_t &result)
 {
-    HILOGI("called, collabInfo %{public}s", collabInfo_.ToString().c_str());
+    HILOGI("called, collabInfo %{public}s", GetCollabInfo().ToString().c_str());
     if (isDisconnected_.load()) {
         HILOGI("already in a disconnected state");
         return ERR_OK;
@@ -434,7 +447,7 @@ int32_t DSchedCollab::PostAbilityRejectTask(const std::string &reason)
 
 int32_t DSchedCollab::PostEndTask()
 {
-    HILOGI("called, collabInfo %{public}s", collabInfo_.ToString().c_str());
+    HILOGI("called, collabInfo %{public}s", GetCollabInfo().ToString().c_str());
     std::lock_guard<std::mutex> lock(eventMutex_);
     if (eventHandler_ == nullptr) {
         HILOGE("eventHandler is nullptr");
@@ -472,7 +485,7 @@ void DSchedCollab::ProcessEvent(const AppExecFwk::InnerEvent::Pointer &event)
 int32_t DSchedCollab::ExeSrcGetPeerVersion()
 {
     HILOGI("called");
-    const std::string sinkDeviceId = collabInfo_.sinkInfo_.deviceId_;
+    const std::string sinkDeviceId = GetCollabInfo().sinkInfo_.deviceId_;
     int32_t ret = DSchedTransportSoftbusAdapter::GetInstance().ConnectDevice(sinkDeviceId,
         softbusSessionId_, SERVICE_TYPE_COLLAB);
     if (ret != ERR_OK) {
@@ -525,7 +538,7 @@ int32_t DSchedCollab::ExeSrcStart()
     }
 
     UpdateState(SOURCE_WAIT_RESULT_STATE);
-    RegisterAbilityLifecycleObserver(collabInfo_.srcInfo_.bundleName_);
+    RegisterAbilityLifecycleObserver(GetCollabInfo().srcInfo_.bundleName_);
     HILOGI("end");
     return ERR_OK;
 }
@@ -536,11 +549,12 @@ int32_t DSchedCollab::PackGetPeerVersionCmd(std::shared_ptr<GetSinkCollabVersion
         HILOGE("cmd or is null");
         return INVALID_PARAMETERS_ERR;
     }
+    DSchedCollabInfo collabInfo = GetCollabInfo();
     cmd->command_ = SINK_GET_VERSION_CMD;
-    cmd->srcCollabSessionId_ = collabInfo_.srcCollabSessionId_;
-    cmd->collabToken_ = collabInfo_.collabToken_;
-    cmd->sinkDeviceId_ = collabInfo_.sinkInfo_.deviceId_;
-    cmd->srcDeviceId_ = collabInfo_.srcInfo_.deviceId_;
+    cmd->srcCollabSessionId_ = collabInfo.srcCollabSessionId_;
+    cmd->collabToken_ = collabInfo.collabToken_;
+    cmd->sinkDeviceId_ = collabInfo.sinkInfo_.deviceId_;
+    cmd->srcDeviceId_ = collabInfo.srcInfo_.deviceId_;
     return ERR_OK;
 }
  
@@ -550,11 +564,12 @@ int32_t DSchedCollab::PackSinkCollabVersionCmd(std::shared_ptr<GetSinkCollabVers
         HILOGE("cmd or is null");
         return INVALID_PARAMETERS_ERR;
     }
+    DSchedCollabInfo collabInfo = GetCollabInfo();
     cmd->command_ = SOURCE_GET_VERSION_CMD;
-    cmd->collabToken_ = collabInfo_.collabToken_;
+    cmd->collabToken_ = collabInfo.collabToken_;
     cmd->sinkCollabVersion_ = DSCHED_COLLAB_PROTOCOL_VERSION;
-    cmd->srcDeviceId_ = collabInfo_.srcInfo_.deviceId_;
-    cmd->sinkDeviceId_ = collabInfo_.sinkInfo_.deviceId_;
+    cmd->srcDeviceId_ = collabInfo.srcInfo_.deviceId_;
+    cmd->sinkDeviceId_ = collabInfo.sinkInfo_.deviceId_;
     return ERR_OK;
 }
 
@@ -564,31 +579,32 @@ int32_t DSchedCollab::PackStartCmd(std::shared_ptr<SinkStartCmd>& cmd)
         HILOGE("cmd or is null");
         return INVALID_PARAMETERS_ERR;
     }
-    cmd->collabVersion_ = collabInfo_.srcCollabVersion_;
+    DSchedCollabInfo collabInfo = GetCollabInfo();
+    cmd->collabVersion_ = collabInfo.srcCollabVersion_;
     cmd->dmsVersion_ = DMS_VERSION;
     cmd->command_ = SINK_START_CMD;
-    cmd->srcCollabSessionId_ = collabInfo_.srcCollabSessionId_;
-    cmd->collabToken_ = collabInfo_.collabToken_;
-    cmd->srcPid_ = collabInfo_.srcInfo_.pid_;
-    cmd->srcUid_ = collabInfo_.srcInfo_.uid_;
-    cmd->srcAccessToken_ = collabInfo_.srcInfo_.accessToken_;
-    cmd->srcServerId_ = collabInfo_.srcInfo_.serverId_;
-    cmd->sinkServerId_ = collabInfo_.sinkInfo_.serverId_;
-    cmd->srcDeviceId_ = collabInfo_.srcInfo_.deviceId_;
-    cmd->sinkDeviceId_ = collabInfo_.sinkInfo_.deviceId_;
-    cmd->srcBundleName_ = collabInfo_.srcInfo_.bundleName_;
-    cmd->sinkBundleName_ = collabInfo_.sinkInfo_.bundleName_;
-    cmd->srcAbilityName_ = collabInfo_.srcInfo_.abilityName_;
-    cmd->sinkAbilityName_ = collabInfo_.sinkInfo_.abilityName_;
-    cmd->srcModuleName_ = collabInfo_.srcInfo_.moduleName_;
-    cmd->sinkModuleName_ = collabInfo_.sinkInfo_.moduleName_;
-    cmd->needSendBigData_ = collabInfo_.srcOpt_.needSendBigData_;
-    cmd->needSendStream_ = collabInfo_.srcOpt_.needSendStream_;
-    cmd->needRecvStream_ = collabInfo_.srcOpt_.needRecvStream_;
-    cmd->startParams_ = collabInfo_.srcOpt_.startParams_;
+    cmd->srcCollabSessionId_ = collabInfo.srcCollabSessionId_;
+    cmd->collabToken_ = collabInfo.collabToken_;
+    cmd->srcPid_ = collabInfo.srcInfo_.pid_;
+    cmd->srcUid_ = collabInfo.srcInfo_.uid_;
+    cmd->srcAccessToken_ = collabInfo.srcInfo_.accessToken_;
+    cmd->srcServerId_ = collabInfo.srcInfo_.serverId_;
+    cmd->sinkServerId_ = collabInfo.sinkInfo_.serverId_;
+    cmd->srcDeviceId_ = collabInfo.srcInfo_.deviceId_;
+    cmd->sinkDeviceId_ = collabInfo.sinkInfo_.deviceId_;
+    cmd->srcBundleName_ = collabInfo.srcInfo_.bundleName_;
+    cmd->sinkBundleName_ = collabInfo.sinkInfo_.bundleName_;
+    cmd->srcAbilityName_ = collabInfo.srcInfo_.abilityName_;
+    cmd->sinkAbilityName_ = collabInfo.sinkInfo_.abilityName_;
+    cmd->srcModuleName_ = collabInfo.srcInfo_.moduleName_;
+    cmd->sinkModuleName_ = collabInfo.sinkInfo_.moduleName_;
+    cmd->needSendBigData_ = collabInfo.srcOpt_.needSendBigData_;
+    cmd->needSendStream_ = collabInfo.srcOpt_.needSendStream_;
+    cmd->needRecvStream_ = collabInfo.srcOpt_.needRecvStream_;
+    cmd->startParams_ = collabInfo.srcOpt_.startParams_;
     cmd->startParams_.SetParam(DMS_IS_CALLER_FOREGROUND, AAFwk::Boolean::Box(
-        DistributedSchedPermission::GetInstance().IsAbilityForeground(collabInfo_.srcInfo_.accessToken_)));
-    cmd->messageParams_ = collabInfo_.srcOpt_.messageParams_;
+        DistributedSchedPermission::GetInstance().IsAbilityForeground(collabInfo.srcInfo_.accessToken_)));
+    cmd->messageParams_ = collabInfo.srcOpt_.messageParams_;
     return PackPartCmd(cmd);
 }
 
@@ -601,10 +617,11 @@ int32_t DSchedCollab::PackPartCmd(std::shared_ptr<SinkStartCmd>& cmd)
         return ret;
     }
     cmd->appVersion_ = static_cast<int32_t>(localBundleInfo.versionCode);
+    DSchedCollabInfo collabInfo = GetCollabInfo();
     CallerInfo callerInfo;
-    callerInfo.sourceDeviceId = collabInfo_.srcInfo_.deviceId_;
-    callerInfo.uid = collabInfo_.srcInfo_.uid_;
-    callerInfo.accessToken = static_cast<uint32_t>(collabInfo_.srcInfo_.accessToken_);
+    callerInfo.sourceDeviceId = collabInfo.srcInfo_.deviceId_;
+    callerInfo.uid = collabInfo.srcInfo_.uid_;
+    callerInfo.accessToken = static_cast<uint32_t>(collabInfo.srcInfo_.accessToken_);
     if (!BundleManagerInternal::GetCallerAppIdFromBms(callerInfo.uid, callerInfo.callerAppId)) {
         HILOGE("GetCallerAppIdFromBms failed");
         return GET_APPID_ERR;
@@ -615,33 +632,37 @@ int32_t DSchedCollab::PackPartCmd(std::shared_ptr<SinkStartCmd>& cmd)
     }
     callerInfo.extraInfoJson[DMS_VERSION_ID] = DMS_VERSION;
     AccountInfo accountInfo;
-    ret = DistributedSchedPermission::GetInstance().GetAccountInfo(collabInfo_.sinkInfo_.deviceId_,
+    ret = DistributedSchedPermission::GetInstance().GetAccountInfo(collabInfo.sinkInfo_.deviceId_,
         callerInfo, accountInfo);
     if (ret != ERR_OK) {
         HILOGE("get or check accountInfo failed");
         return GET_ACCOUNT_INFO_ERR;
     }
-    if (!DistributedSchedPermission::GetInstance().CheckSrcBackgroundPermission(collabInfo_.srcInfo_.accessToken_)) {
+    if (!DistributedSchedPermission::GetInstance().CheckSrcBackgroundPermission(collabInfo.srcInfo_.accessToken_)) {
         HILOGE("check source backgroundPermission failed");
         return DMS_START_CONTROL_PERMISSION_DENIED;
     }
     cmd->callerInfo_ = callerInfo;
-    collabInfo_.callerInfo_ = callerInfo;
     cmd->accountInfo_ = accountInfo;
-    collabInfo_.srcAccountInfo_ = accountInfo;
+    {
+        std::lock_guard<std::mutex> infoLock(collabInfoMutex_);
+        collabInfo_.callerInfo_ = callerInfo;
+        collabInfo_.srcAccountInfo_ = accountInfo;
+    }
     return ERR_OK;
 }
 
 int32_t DSchedCollab::ExeStartAbility(const std::string &peerDeviceId)
 {
     HILOGI("called, peerDeviceId: %{public}s", GetAnonymStr(peerDeviceId).c_str());
-    if (collabInfo_.callerInfo_.sourceDeviceId != peerDeviceId) {
+    DSchedCollabInfo collabInfo = GetCollabInfo();
+    if (collabInfo.callerInfo_.sourceDeviceId != peerDeviceId) {
         HILOGE("Irrecognized srcDeviceId!");
         return INVALID_PARAMETERS_ERR;
     }
     AAFwk::Want want = GenerateCollabWant();
-    int32_t ret = DistributedSchedService::GetInstance().CheckCollabStartPermission(want, collabInfo_.callerInfo_,
-        collabInfo_.srcAccountInfo_, false);
+    int32_t ret = DistributedSchedService::GetInstance().CheckCollabStartPermission(want, collabInfo.callerInfo_,
+        collabInfo.srcAccountInfo_, false);
     want.RemoveParam(DMS_IS_CALLER_FOREGROUND);
     if (ret != ERR_OK) {
         HILOGE("CheckTargetPermission failed!");
@@ -664,7 +685,7 @@ int32_t DSchedCollab::ExeStartAbility(const std::string &peerDeviceId)
     }
 
     UpdateState(SINK_CONNECT_STATE);
-    RegisterAbilityLifecycleObserver(collabInfo_.sinkInfo_.bundleName_);
+    RegisterAbilityLifecycleObserver(collabInfo.sinkInfo_.bundleName_);
     HILOGI("end");
     return ERR_OK;
 }
@@ -673,36 +694,37 @@ AAFwk::Want DSchedCollab::GenerateCollabWant()
 {
     HILOGI("called");
     AAFwk::Want want;
+    DSchedCollabInfo collabInfo = GetCollabInfo();
     want.AddFlags(want.FLAG_ABILITY_ON_COLLABORATE);
-    want.SetParam("deviceId", collabInfo_.sinkInfo_.deviceId_);
-    want.SetElementName(collabInfo_.sinkInfo_.deviceId_, collabInfo_.sinkInfo_.bundleName_,
-        collabInfo_.sinkInfo_.abilityName_);
+    want.SetParam("deviceId", collabInfo.sinkInfo_.deviceId_);
+    want.SetElementName(collabInfo.sinkInfo_.deviceId_, collabInfo.sinkInfo_.bundleName_,
+        collabInfo.sinkInfo_.abilityName_);
 
     AAFwk::WantParams peerInfoParams;
-    peerInfoParams.SetParam("deviceId", AAFwk::String::Box(collabInfo_.srcInfo_.deviceId_));
-    peerInfoParams.SetParam("bundleName", AAFwk::String::Box(collabInfo_.srcInfo_.bundleName_));
-    peerInfoParams.SetParam("moduleName", AAFwk::String::Box(collabInfo_.srcInfo_.moduleName_));
-    peerInfoParams.SetParam("abilityName", AAFwk::String::Box(collabInfo_.srcInfo_.abilityName_));
-    peerInfoParams.SetParam("serverId", AAFwk::String::Box(collabInfo_.srcInfo_.serverId_));
-    peerInfoParams.SetParam("serviceName", AAFwk::String::Box(collabInfo_.srcInfo_.serverId_));
+    peerInfoParams.SetParam("deviceId", AAFwk::String::Box(collabInfo.srcInfo_.deviceId_));
+    peerInfoParams.SetParam("bundleName", AAFwk::String::Box(collabInfo.srcInfo_.bundleName_));
+    peerInfoParams.SetParam("moduleName", AAFwk::String::Box(collabInfo.srcInfo_.moduleName_));
+    peerInfoParams.SetParam("abilityName", AAFwk::String::Box(collabInfo.srcInfo_.abilityName_));
+    peerInfoParams.SetParam("serverId", AAFwk::String::Box(collabInfo.srcInfo_.serverId_));
+    peerInfoParams.SetParam("serviceName", AAFwk::String::Box(collabInfo.srcInfo_.serverId_));
 
     AAFwk::WantParams optParams;
-    optParams.SetParam("needSendData", AAFwk::Boolean::Box(collabInfo_.srcOpt_.needSendBigData_));
-    optParams.SetParam("needSendStream", AAFwk::Boolean::Box(collabInfo_.srcOpt_.needSendStream_));
-    optParams.SetParam("needReceiveStream", AAFwk::Boolean::Box(collabInfo_.srcOpt_.needRecvStream_));
-    optParams.SetParam("parameters", AAFwk::WantParamWrapper::Box(collabInfo_.srcOpt_.messageParams_));
+    optParams.SetParam("needSendData", AAFwk::Boolean::Box(collabInfo.srcOpt_.needSendBigData_));
+    optParams.SetParam("needSendStream", AAFwk::Boolean::Box(collabInfo.srcOpt_.needSendStream_));
+    optParams.SetParam("needReceiveStream", AAFwk::Boolean::Box(collabInfo.srcOpt_.needRecvStream_));
+    optParams.SetParam("parameters", AAFwk::WantParamWrapper::Box(collabInfo.srcOpt_.messageParams_));
 
     AAFwk::WantParams collabParams;
     collabParams.SetParam("PeerInfo", AAFwk::WantParamWrapper::Box(peerInfoParams));
     collabParams.SetParam("ConnectOption", AAFwk::WantParamWrapper::Box(optParams));
-    collabParams.SetParam("ohos.dms.collabToken", AAFwk::String::Box(collabInfo_.collabToken_));
+    collabParams.SetParam("ohos.dms.collabToken", AAFwk::String::Box(collabInfo.collabToken_));
 
     AAFwk::WantParams wantParams;
     SetScreenLockParameters(wantParams);
     wantParams.SetParam("ohos.extra.param.key.supportCollaborateIndex", AAFwk::WantParamWrapper::Box(collabParams));
     HILOGI("ohos.aafwk.param.callAbilityToForeground is %{public}d", IsStartForeground());
     wantParams.SetParam("ohos.aafwk.param.callAbilityToForeground", AAFwk::Boolean::Box(IsStartForeground()));
-    bool isCallerForeground = collabInfo_.srcOpt_.startParams_.GetParam(DMS_IS_CALLER_FOREGROUND);
+    bool isCallerForeground = collabInfo.srcOpt_.startParams_.GetParam(DMS_IS_CALLER_FOREGROUND);
     want.SetParam(DMS_IS_CALLER_FOREGROUND, isCallerForeground);
     want.SetParams(wantParams);
     return want;
@@ -722,7 +744,7 @@ void DSchedCollab::SetScreenLockParameters(AAFwk::WantParams& wantParams)
 
 bool DSchedCollab::IsStartForeground()
 {
-    auto value = collabInfo_.srcOpt_.startParams_.GetParam(KEY_START_OPTION);
+    auto value = GetCollabInfo().srcOpt_.startParams_.GetParam(KEY_START_OPTION);
     IString *ao = IString::Query(value);
     if (ao != nullptr) {
         std::string startOpt = AAFwk::String::Unbox(ao);
@@ -736,10 +758,13 @@ int32_t DSchedCollab::SaveSinkAbilityData(const std::string& collabToken, const 
     const int32_t &sinkPid, const int32_t &sinkUid, const int32_t &sinkAccessTokenId)
 {
     HILOGI("called, pid: %{public}d, uid: %{public}d, accessTokenId: %{public}d", sinkPid, sinkUid, sinkAccessTokenId);
-    collabInfo_.sinkInfo_.pid_ = sinkPid;
-    collabInfo_.sinkInfo_.uid_ = sinkUid;
-    collabInfo_.sinkInfo_.accessToken_ = sinkAccessTokenId;
-    HILOGI("end, continueInfo %{public}s", collabInfo_.ToString().c_str());
+    {
+        std::lock_guard<std::mutex> infoLock(collabInfoMutex_);
+        collabInfo_.sinkInfo_.pid_ = sinkPid;
+        collabInfo_.sinkInfo_.uid_ = sinkUid;
+        collabInfo_.sinkInfo_.accessToken_ = sinkAccessTokenId;
+    }
+    HILOGI("end, continueInfo %{public}s", GetCollabInfo().ToString().c_str());
     return ERR_OK;
 }
 
@@ -772,11 +797,14 @@ int32_t DSchedCollab::ExeSinkPrepareResult(const int32_t &result)
 #ifdef EFFICIENCY_MANAGER_ENABLE
     ReportDistributedComponentChange(DISTRIBUTED_COMPONENT_ADD, IDistributedSched::CALLEE);
 #endif
-    collabInfo_.srcUdid_ = DtbschedmgrDeviceInfoStorage::GetInstance().GetUdidByNetworkId(
-        collabInfo_.srcInfo_.deviceId_);
-    collabInfo_.sinkUdid_ = DtbschedmgrDeviceInfoStorage::GetInstance().GetUdidByNetworkId(
-        collabInfo_.sinkInfo_.deviceId_);
-    HILOGI("end, info: %{public}s.", collabInfo_.ToString().c_str());
+    {
+        std::lock_guard<std::mutex> infoLock(collabInfoMutex_);
+        collabInfo_.srcUdid_ = DtbschedmgrDeviceInfoStorage::GetInstance().GetUdidByNetworkId(
+            collabInfo_.srcInfo_.deviceId_);
+        collabInfo_.sinkUdid_ = DtbschedmgrDeviceInfoStorage::GetInstance().GetUdidByNetworkId(
+            collabInfo_.sinkInfo_.deviceId_);
+    }
+    HILOGI("end, info: %{public}s.", GetCollabInfo().ToString().c_str());
     return ERR_OK;
 }
 
@@ -787,22 +815,23 @@ int32_t DSchedCollab::PackNotifyResultCmd(std::shared_ptr<NotifyResultCmd> cmd, 
         HILOGE("cmd is null");
         return INVALID_PARAMETERS_ERR;
     }
+    DSchedCollabInfo collabInfo = GetCollabInfo();
     cmd->command_ = NOTIFY_RESULT_CMD;
     cmd->result_ = result;
-    cmd->collabToken_ = collabInfo_.collabToken_;
-    cmd->sinkSocketName_ = collabInfo_.sinkInfo_.socketName_;
-    cmd->sinkCollabSessionId_ = collabInfo_.sinkCollabSessionId_;
+    cmd->collabToken_ = collabInfo.collabToken_;
+    cmd->sinkSocketName_ = collabInfo.sinkInfo_.socketName_;
+    cmd->sinkCollabSessionId_ = collabInfo.sinkCollabSessionId_;
     cmd->abilityRejectReason_ = abilityRejectReason;
-    cmd->sinkPid_ = collabInfo_.sinkInfo_.pid_;
-    cmd->sinkAccessToken_ = collabInfo_.sinkInfo_.accessToken_;
-    cmd->sinkUserId_ = collabInfo_.sinkUserId_;
-    cmd->sinkAccountId_ = collabInfo_.sinkAccountId_;
+    cmd->sinkPid_ = collabInfo.sinkInfo_.pid_;
+    cmd->sinkAccessToken_ = collabInfo.sinkInfo_.accessToken_;
+    cmd->sinkUserId_ = collabInfo.sinkUserId_;
+    cmd->sinkAccountId_ = collabInfo.sinkAccountId_;
     return ERR_OK;
 }
 
 int32_t DSchedCollab::ExeSrcCollabResult(const int32_t &result, const std::string reason)
 {
-    HILOGI("called, collabInfo: %{public}s", collabInfo_.ToString().c_str());
+    HILOGI("called, collabInfo: %{public}s", GetCollabInfo().ToString().c_str());
     if (result != ERR_OK && result != COLLAB_ABILITY_REJECT_ERR) {
         HILOGE("failed, result: %{public}d", result);
         return PostErrEndTask(result);
@@ -827,43 +856,46 @@ int32_t DSchedCollab::ExeSrcCollabResult(const int32_t &result, const std::strin
 int32_t DSchedCollab::CleanUpSession()
 {
     HILOGI("called");
+    DSchedCollabInfo collabInfo = GetCollabInfo();
 #ifdef EFFICIENCY_MANAGER_ENABLE
-    int32_t deviceType = (collabInfo_.direction_ == COLLAB_SOURCE) ?
+    int32_t deviceType = (collabInfo.direction_ == COLLAB_SOURCE) ?
         IDistributedSched::CALLER : IDistributedSched::CALLEE;
     HILOGI("report REMOVE for deviceType: %{public}d", deviceType);
     ReportDistributedComponentChange(DISTRIBUTED_COMPONENT_REMOVE, deviceType);
 #endif
 
-    if (collabInfo_.direction_ == COLLAB_SOURCE && !isDisconnected_.load()) {
+    if (collabInfo.direction_ == COLLAB_SOURCE && !isDisconnected_.load()) {
         isDisconnected_.store(true);
-        const std::string peerDeviceId = collabInfo_.sinkInfo_.deviceId_;
+        const std::string peerDeviceId = collabInfo.sinkInfo_.deviceId_;
         HILOGI("disconnect peer device %{public}s", GetAnonymStr(peerDeviceId).c_str());
         DSchedTransportSoftbusAdapter::GetInstance().DisconnectDevice(peerDeviceId);
     }
     ExeClientDisconnectNotify();
-    return DSchedCollabManager::GetInstance().CleanUpSession(collabInfo_.collabToken_);
+    return DSchedCollabManager::GetInstance().CleanUpSession(collabInfo.collabToken_);
 }
 
 int32_t DSchedCollab::SrcPeerVersionNotify()
 {
     HILOGI("called");
+    DSchedCollabInfo collabInfo = GetCollabInfo();
     MessageParcel data;
     if (!data.WriteInterfaceToken(NAPI_COLLAB_CALLBACK_INTERFACE_TOKEN)) {
         HILOGE("write token failed");
         return INVALID_PARAMETERS_ERR;
     }
-    PARCEL_WRITE_HELPER(data, Int32, collabInfo_.srcCollabSessionId_);
-    PARCEL_WRITE_HELPER(data, Int32, collabInfo_.sinkCollabVersion_);
+    PARCEL_WRITE_HELPER(data, Int32, collabInfo.srcCollabSessionId_);
+    PARCEL_WRITE_HELPER(data, Int32, collabInfo.sinkCollabVersion_);
     MessageParcel reply;
     MessageOption option;
-    int32_t ret = collabInfo_.srcClientCB_->SendRequest(NOTIFY_PEER_COLLAB_VERSION, data, reply, option);
+    int32_t ret = collabInfo.srcClientCB_->SendRequest(NOTIFY_PEER_COLLAB_VERSION, data, reply, option);
     return ret;
 }
 
 int32_t DSchedCollab::ExeSrcClientNotify(const int32_t &result, const std::string reason)
 {
-    HILOGI("called, result: %{public}d, collabInfo: %{public}s", result, collabInfo_.ToString().c_str());
-    if (collabInfo_.srcClientCB_ == nullptr) {
+    DSchedCollabInfo collabInfo = GetCollabInfo();
+    HILOGI("called, result: %{public}d, collabInfo: %{public}s", result, collabInfo.ToString().c_str());
+    if (collabInfo.srcClientCB_ == nullptr) {
         HILOGW("callback object null.");
         return INVALID_PARAMETERS_ERR;
     }
@@ -873,14 +905,14 @@ int32_t DSchedCollab::ExeSrcClientNotify(const int32_t &result, const std::strin
         HILOGE("write token failed");
         return INVALID_PARAMETERS_ERR;
     }
-    PARCEL_WRITE_HELPER(data, Int32, collabInfo_.srcCollabSessionId_);
+    PARCEL_WRITE_HELPER(data, Int32, collabInfo.srcCollabSessionId_);
     PARCEL_WRITE_HELPER(data, Int32, result);
-    PARCEL_WRITE_HELPER(data, String, collabInfo_.sinkInfo_.socketName_);
-    PARCEL_WRITE_HELPER(data, String, collabInfo_.collabToken_);
+    PARCEL_WRITE_HELPER(data, String, collabInfo.sinkInfo_.socketName_);
+    PARCEL_WRITE_HELPER(data, String, collabInfo.collabToken_);
     PARCEL_WRITE_HELPER(data, String, reason);
     MessageParcel reply;
     MessageOption option;
-    int32_t ret = collabInfo_.srcClientCB_->SendRequest(NOTIFY_COLLAB_PREPARE_RESULT, data, reply, option);
+    int32_t ret = collabInfo.srcClientCB_->SendRequest(NOTIFY_COLLAB_PREPARE_RESULT, data, reply, option);
     if (ret != ERR_OK) {
         HILOGE("send request failed, ret: %{public}d", ret);
     }
@@ -891,22 +923,23 @@ int32_t DSchedCollab::ExeSrcClientNotify(const int32_t &result, const std::strin
 int32_t DSchedCollab::ExeClientDisconnectNotify()
 {
     HILOGI("called");
+    DSchedCollabInfo collabInfo = GetCollabInfo();
     int32_t collabSessionId;
     sptr<IRemoteObject> clientCB;
-    if (collabInfo_.direction_ == COLLAB_SOURCE) {
-        if (collabInfo_.srcClientCB_ == nullptr) {
+    if (collabInfo.direction_ == COLLAB_SOURCE) {
+        if (collabInfo.srcClientCB_ == nullptr) {
             HILOGW("srcClientCB object null.");
             return ERR_NULL_OBJECT;
         }
-        collabSessionId = collabInfo_.srcCollabSessionId_;
-        clientCB = collabInfo_.srcClientCB_;
+        collabSessionId = collabInfo.srcCollabSessionId_;
+        clientCB = collabInfo.srcClientCB_;
     } else {
-        if (collabInfo_.sinkClientCB_ == nullptr) {
+        if (collabInfo.sinkClientCB_ == nullptr) {
             HILOGW("sinkClientCB object null.");
             return ERR_NULL_OBJECT;
         }
-        collabSessionId = collabInfo_.sinkCollabSessionId_;
-        clientCB = collabInfo_.sinkClientCB_;
+        collabSessionId = collabInfo.sinkCollabSessionId_;
+        clientCB = collabInfo.sinkClientCB_;
     }
 
     MessageParcel data;
@@ -929,22 +962,23 @@ int32_t DSchedCollab::ExeClientDisconnectNotify()
 int32_t DSchedCollab::NotifyWifiOpen()
 {
     HILOGI("called");
+    DSchedCollabInfo collabInfo = GetCollabInfo();
     int32_t collabSessionId;
     sptr<IRemoteObject> clientCB;
-    if (collabInfo_.direction_ == COLLAB_SOURCE) {
-        if (collabInfo_.srcClientCB_ == nullptr) {
+    if (collabInfo.direction_ == COLLAB_SOURCE) {
+        if (collabInfo.srcClientCB_ == nullptr) {
             HILOGW("srcClientCB object null.");
             return ERR_NULL_OBJECT;
         }
-        collabSessionId = collabInfo_.srcCollabSessionId_;
-        clientCB = collabInfo_.srcClientCB_;
+        collabSessionId = collabInfo.srcCollabSessionId_;
+        clientCB = collabInfo.srcClientCB_;
     } else {
-        if (collabInfo_.sinkClientCB_ == nullptr) {
+        if (collabInfo.sinkClientCB_ == nullptr) {
             HILOGW("sinkClientCB object null.");
             return ERR_NULL_OBJECT;
         }
-        collabSessionId = collabInfo_.sinkCollabSessionId_;
-        clientCB = collabInfo_.sinkClientCB_;
+        collabSessionId = collabInfo.sinkCollabSessionId_;
+        clientCB = collabInfo.sinkClientCB_;
     }
 
     MessageParcel data;
@@ -1066,7 +1100,7 @@ int32_t DSchedCollab::PackDisconnectCmd(std::shared_ptr<DisconnectCmd> cmd)
         return INVALID_PARAMETERS_ERR;
     }
     cmd->command_ = DISCONNECT_CMD;
-    cmd->collabToken_ = collabInfo_.collabToken_;
+    cmd->collabToken_ = GetCollabInfo().collabToken_;
     return ERR_OK;
 }
 
@@ -1109,6 +1143,7 @@ int32_t DSchedCollab::GetSoftbusSessionId()
 
 DSchedCollabInfo DSchedCollab::GetCollabInfo()
 {
+    std::lock_guard<std::mutex> infoLock(collabInfoMutex_);
     return collabInfo_;
 }
 
@@ -1119,7 +1154,7 @@ bool DSchedCollab::CheckMDMControl()
     }
     int32_t accountId = DmsKvSyncE2E::GetInstance()->GetActiveAccountId();
     if (DmsKvSyncE2E::GetInstance()->IsMDMControlWithExemption(
-        collabInfo_.srcInfo_.bundleName_, COLLABORATION_SERVICE, accountId)) {
+        GetCollabInfo().srcInfo_.bundleName_, COLLABORATION_SERVICE, accountId)) {
         HILOGE("Current user is under MDM control and not exempted.");
         return true;
     }
@@ -1159,7 +1194,10 @@ void DSchedCollab::HandleSourceGetVersionCmd(const std::string &jsonStr)
         PostErrEndTask(ret);
         return;
     }
-    collabInfo_.sinkCollabVersion_ = getSinkCollabVersionCmd->sinkCollabVersion_;
+    {
+        std::lock_guard<std::mutex> infoLock(collabInfoMutex_);
+        collabInfo_.sinkCollabVersion_ = getSinkCollabVersionCmd->sinkCollabVersion_;
+    }
     PostSrcGetVersionTask();
 }
 
@@ -1257,14 +1295,19 @@ void DSchedCollab::ReportDistributedComponentChange(int32_t changeType, int32_t 
 {
     HILOGI("called, changeType: %{public}d, deviceType: %{public}d", changeType, deviceType);
 
-    const CollabMessage *info = nullptr;
+    // Take a value copy of the CollabMessage instead of keeping a pointer into
+    // collabInfo_: concurrent multi-field writes would otherwise leave the pointer
+    // targeting a torn sub-struct (string members) while it is dereferenced below.
+    CollabMessage collabMessage;
+    DSchedCollabInfo collabInfo = GetCollabInfo();
     if (deviceType == IDistributedSched::CALLER) {
-        info = &collabInfo_.srcInfo_;
+        collabMessage = collabInfo.srcInfo_;
     } else if (deviceType == IDistributedSched::CALLEE) {
-        info = &collabInfo_.sinkInfo_;
+        collabMessage = collabInfo.sinkInfo_;
     }
 
-    if (info == nullptr || info->uid_ < 0 || info->bundleName_.empty()) {
+    const CollabMessage *info = &collabMessage;
+    if (info->uid_ < 0 || info->bundleName_.empty()) {
         HILOGW("info is invalid, deviceType: %{public}d, skip report", deviceType);
         return;
     }
