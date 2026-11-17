@@ -335,9 +335,9 @@ bool DistributedSchedPermission::GetOsAccountData(AccountInfo& dmsAccountInfo, i
         accountId = osAccountInfo.uid_;
     }
     dmsAccountInfo.activeAccountId = accountId;
-    HILOGI("Get caller dmsAccountInfo OK, callerUid %{public}d, accountId %{public}s, userId %{public}ld.",
+    HILOGI("Get caller dmsAccountInfo OK, callerUid %{public}d, accountId %{public}s, userId %{public}d.",
         static_cast<int32_t>(callerUid), GetAnonymStr(dmsAccountInfo.activeAccountId).c_str(),
-        static_cast<int64_t>(dmsAccountInfo.userId));
+        dmsAccountInfo.userId);
 #endif
     return true;
 }
