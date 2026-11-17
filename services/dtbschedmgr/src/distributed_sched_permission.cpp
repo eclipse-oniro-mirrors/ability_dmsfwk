@@ -35,6 +35,7 @@
 #include "dtbschedmgr_log.h"
 #include "json_util.h"
 #include "softbus_adapter/transport/dsched_transport_softbus_adapter.h"
+#include "util/dms_user_and_account_util.h"
 
 namespace OHOS {
 namespace DistributedSchedule {
@@ -322,15 +323,21 @@ bool DistributedSchedPermission::GetOsAccountData(AccountInfo& dmsAccountInfo, i
         dmsAccountInfo.userId = ids[0];
     }
 
-    AccountSA::OhosAccountInfo osAccountInfo;
-    ErrCode ret = AccountSA::OhosAccountKits::GetInstance().GetOhosAccountInfo(osAccountInfo);
-    if (ret != 0 || osAccountInfo.uid_ == "") {
-        HILOGE("Get accountId from Ohos account info fail, ret: %{public}d.", ret);
-        return false;
+    std::string accountId = DmsUserAndAccountUtil::GetAccountIdByUserId(dmsAccountInfo.userId);
+    if (accountId.empty()) {
+        HILOGW("GetAccountIdByUserId empty, fallback to foreground OhosAccountInfo.");
+        AccountSA::OhosAccountInfo osAccountInfo;
+        ErrCode ret = AccountSA::OhosAccountKits::GetInstance().GetOhosAccountInfo(osAccountInfo);
+        if (ret != 0 || osAccountInfo.uid_ == "") {
+            HILOGE("Get accountId from Ohos account info fail, ret: %{public}d.", ret);
+            return false;
+        }
+        accountId = osAccountInfo.uid_;
     }
-    dmsAccountInfo.activeAccountId = osAccountInfo.uid_;
-    HILOGI("Get caller dmsAccountInfo OK, accountId %{public}s, userId %{public}s.",
-        GetAnonymStr(dmsAccountInfo.activeAccountId).c_str(), GetAnonymInt32(dmsAccountInfo.userId).c_str());
+    dmsAccountInfo.activeAccountId = accountId;
+    HILOGI("Get caller dmsAccountInfo OK, callerUid %{public}d, accountId %{public}s, userId %{public}d.",
+        static_cast<int32_t>(callerUid), GetAnonymStr(dmsAccountInfo.activeAccountId).c_str(),
+        dmsAccountInfo.userId);
 #endif
     return true;
 }

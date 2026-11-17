@@ -16,6 +16,7 @@
 #include "util/dms_user_and_account_util.h"
 #include "dtbschedmgr_log.h"
 #include "os_account_manager.h"
+#include "os_account_subprofile_client.h"
 #include "distributed_sched_utils.h"
 
 namespace OHOS {
@@ -98,6 +99,31 @@ ErrCode DmsUserAndAccountUtil::GetAccountInfoFromCallingUid(int32_t callingUid,
     }
     HILOGI("GetOsAccountInfoFromCallingUid end, accountId: %{public}s", GetAnonymStr(accountInfo.uid_).c_str());
     return ERR_OK;
+}
+
+std::string DmsUserAndAccountUtil::GetAccountIdByUserId(int32_t userId)
+{
+    HILOGI("GetAccountIdByUserId start, userId: %{public}d", userId);
+    std::string accountId;
+    int32_t subProfileId = -1;
+    ErrCode ret = AccountSA::OsAccountSubProfileClient::GetInstance()
+        .GetOsAccountForegroundSubProfileId(userId, subProfileId);
+    if (ret != ERR_OK) {
+        HILOGE("GetOsAccountForegroundSubProfileId failed, userId: %{public}d, ret: %{public}d", userId, ret);
+        return accountId;
+    }
+    AccountSA::OhosAccountInfo accountInfo;
+    AccountSA::OsAccountSubspaceResult subspaceResult;
+    ret = AccountSA::OhosAccountKits::GetInstance()
+        .GetOsAccountSubProfile(userId, subProfileId, subspaceResult, accountInfo);
+    if (ret != ERR_OK || accountInfo.uid_.empty()) {
+        HILOGE("GetOsAccountSubProfile failed, userId: %{public}d, subProfileId: %{public}d, ret: %{public}d",
+            userId, subProfileId, ret);
+        return accountId;
+    }
+    accountId = accountInfo.uid_;
+    HILOGI("GetAccountIdByUserId end, accountId: %{public}s", GetAnonymStr(accountId).c_str());
+    return accountId;
 }
 }
 }
