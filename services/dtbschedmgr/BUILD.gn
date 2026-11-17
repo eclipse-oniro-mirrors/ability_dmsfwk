@@ -411,7 +411,7 @@ ohos_shared_library("dms_mission_extension") {
       "src/mission/extension/mission_info_converter.cpp",
       "src/mission/extension/snapshot.cpp",
       "src/mission/extension/snapshot_converter.cpp",
-      "src/util/dms_use_and_acount_utils.cpp",
+      "src/util/dms_use_and_account_utils.cpp",
     ]
   }
 
