@@ -288,6 +288,7 @@ int32_t DistributedSchedStub::StartRemoteAbilityInner(MessageParcel& data, Messa
         HILOGW("START_ABILITY want readParcelable failed!");
         return ERR_NULL_OBJECT;
     }
+    want->AdoptAllLegacyFd(AAFwk::FdTraversalMode::RECURSIVE);
     DistributedSchedPermission::GetInstance().RemoveRemoteObjectFromWant(want);
     int32_t callerUid = 0;
     PARCEL_READ_HELPER(data, Int32, callerUid);
@@ -925,6 +926,7 @@ int32_t DistributedSchedStub::StartContinuationInner(MessageParcel& data, Messag
         HILOGW("want readParcelable failed!");
         return ERR_NULL_OBJECT;
     }
+    want->AdoptAllLegacyFd(AAFwk::FdTraversalMode::RECURSIVE);
     DistributedSchedPermission::GetInstance().RemoveRemoteObjectFromWant(want);
     int32_t missionId = data.ReadInt32();
     int32_t callerUid = data.ReadInt32();
@@ -1027,6 +1029,7 @@ int32_t DistributedSchedStub::ConnectRemoteAbilityInner(MessageParcel& data, Mes
         HILOGW("want readParcelable failed!");
         return ERR_NULL_OBJECT;
     }
+    want->AdoptAllLegacyFd(AAFwk::FdTraversalMode::RECURSIVE);
     DistributedSchedPermission::GetInstance().RemoveRemoteObjectFromWant(want);
     sptr<IRemoteObject> connect = data.ReadRemoteObject();
     int32_t callerUid = 0;
@@ -1622,6 +1625,7 @@ int32_t DistributedSchedStub::StartRemoteAbilityByCallInner(MessageParcel& data,
         HILOGW("want readParcelable failed!");
         return ERR_NULL_OBJECT;
     }
+    want->AdoptAllLegacyFd(AAFwk::FdTraversalMode::RECURSIVE);
     DistributedSchedPermission::GetInstance().RemoveRemoteObjectFromWant(want);
     sptr<IRemoteObject> connect = data.ReadRemoteObject();
     int32_t callerUid = 0;
@@ -1800,6 +1804,7 @@ int32_t DistributedSchedStub::StartRemoteFreeInstallInner(MessageParcel& data, M
         HILOGE("want readParcelable failed!");
         return ERR_NULL_OBJECT;
     }
+    want->AdoptAllLegacyFd(AAFwk::FdTraversalMode::RECURSIVE);
     DistributedSchedPermission::GetInstance().RemoveRemoteObjectFromWant(want);
     int32_t callerUid = 0;
     int32_t requestCode = 0;
@@ -1914,6 +1919,7 @@ int32_t DistributedSchedStub::StopRemoteExtensionAbilityInner(MessageParcel& dat
         HILOGW("Stop reomte extension ability want readParcelable failed!");
         return ERR_NULL_OBJECT;
     }
+    want->AdoptAllLegacyFd(AAFwk::FdTraversalMode::RECURSIVE);
     DistributedSchedPermission::GetInstance().RemoveRemoteObjectFromWant(want);
     int32_t callerUid = 0;
     PARCEL_READ_HELPER(data, Int32, callerUid);
@@ -2046,6 +2052,7 @@ int32_t DistributedSchedStub::StartRemoteIntentInner(MessageParcel& data, Messag
         HILOGE("StartRemoteIntentInner want read failed");
         return ERR_NULL_OBJECT;
     }
+    want->AdoptAllLegacyFd(AAFwk::FdTraversalMode::RECURSIVE);
     DistributedSchedPermission::GetInstance().RemoveRemoteObjectFromWant(want);
     std::string moduleName = data.ReadString();
     want->SetModuleName(moduleName);
@@ -2080,6 +2087,7 @@ int32_t DistributedSchedStub::SendIntentResultInner(MessageParcel& data, Message
         HILOGE("Read want failed");
         return ERR_NULL_OBJECT;
     }
+    want->AdoptAllLegacyFd(AAFwk::FdTraversalMode::RECURSIVE);
 
     int32_t callerUid = 0;
     PARCEL_READ_HELPER(data, Int32, callerUid);
