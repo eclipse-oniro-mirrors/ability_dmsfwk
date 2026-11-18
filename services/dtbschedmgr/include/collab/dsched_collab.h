@@ -293,6 +293,11 @@ private:
     std::mutex eventMutex_;
 
     DSchedCollabInfo collabInfo_;
+    // Protects collabInfo_ against concurrent multi-field writes (binder/manager event
+    // threads) and torn reads (collab event thread/wifi thread). Never held across
+    // SendRequest/SendEvent/IPC calls; lock order: eventMutex_ -> collabInfoMutex_,
+    // manager collabMutex_ -> collabInfoMutex_ (one-way only).
+    std::mutex collabInfoMutex_;
     int32_t softbusSessionId_ = INVALID_SESSION_ID;
     sptr<AbilityLifecycleObserver> appStateObserver_ = nullptr;
     std::atomic<bool> isDisconnected_ = false;

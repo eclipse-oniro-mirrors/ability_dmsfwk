@@ -874,5 +874,99 @@ HWTEST_F(DSchedCollabManagerTest, HandleCloseSessions_002, TestSize.Level3)
     EXPECT_NE(ret, ERR_OK);
     DTEST_LOG << "DSchedCollabManagerTest HandleCloseSessions_002 end" << std::endl;
 }
+
+/**
+ * @tc.name: DispatchCollabMission_001
+ * @tc.desc: verify DispatchCollabMission with uninitialized eventHandler_
+ * @tc.type: FUNC
+ * @tc.require: I6SJQ6
+ */
+HWTEST_F(DSchedCollabManagerTest, DispatchCollabMission_001, TestSize.Level3)
+{
+    DTEST_LOG << "DSchedCollabManagerTest DispatchCollabMission_001 begin" << std::endl;
+    const std::string collabToken = "dispatch.token";
+    DSchedCollabInfo info;
+    info.collabToken_ = collabToken;
+    info.srcInfo_.pid_ = 1000;
+    std::shared_ptr<DSchedCollab> dCollab = std::make_shared<DSchedCollab>(collabToken, info);
+    ASSERT_NE(dCollab, nullptr);
+    ASSERT_EQ(dCollab->eventHandler_, nullptr);
+    EXPECT_EQ(DSchedCollabManager::GetInstance().DispatchCollabMission(dCollab, info), INVALID_PARAMETERS_ERR);
+    DTEST_LOG << "DSchedCollabManagerTest DispatchCollabMission_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: DispatchCollabMission_002
+ * @tc.desc: verify DispatchCollabMission updates collabInfo_ via SetSrcCollabInfo and keeps srcClientCB_
+ * @tc.type: FUNC
+ * @tc.require: I6SJQ6
+ */
+HWTEST_F(DSchedCollabManagerTest, DispatchCollabMission_002, TestSize.Level3)
+{
+    DTEST_LOG << "DSchedCollabManagerTest DispatchCollabMission_002 begin" << std::endl;
+    std::shared_ptr<DSchedCollab> dCollab = CreateObject();
+    ASSERT_NE(dCollab, nullptr);
+    dCollab->collabInfo_.srcClientCB_ = GetDSchedService();
+    ASSERT_NE(dCollab->collabInfo_.srcClientCB_, nullptr);
+    DSchedCollabInfo info;
+    info.collabToken_ = "dispatch.valid.token";
+    info.srcInfo_.pid_ = 1000;
+    info.srcInfo_.bundleName_ = "dispatch.src.bundle";
+    info.srcClientCB_ = nullptr;
+    EXPECT_EQ(DSchedCollabManager::GetInstance().DispatchCollabMission(dCollab, info), ERR_OK);
+    usleep(WAITTIME);
+    EXPECT_EQ(dCollab->collabInfo_.collabToken_, "dispatch.valid.token");
+    EXPECT_EQ(dCollab->collabInfo_.srcInfo_.pid_, 1000);
+    EXPECT_EQ(dCollab->collabInfo_.srcInfo_.bundleName_, "dispatch.src.bundle");
+    EXPECT_NE(dCollab->collabInfo_.srcClientCB_, nullptr);
+    dCollab->UnInit();
+    DTEST_LOG << "DSchedCollabManagerTest DispatchCollabMission_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: DisconnectAllSessionsForUser_001
+ * @tc.desc: verify DisconnectAllSessionsForUser with invalid userId keeps collabs_ unchanged
+ * @tc.type: FUNC
+ * @tc.require: I6SJQ6
+ */
+HWTEST_F(DSchedCollabManagerTest, DisconnectAllSessionsForUser_001, TestSize.Level3)
+{
+    DTEST_LOG << "DSchedCollabManagerTest DisconnectAllSessionsForUser_001 begin" << std::endl;
+    DSchedCollabManager::GetInstance().collabs_.clear();
+    DSchedCollabManager::GetInstance().collabs_.insert(std::make_pair("neg.user.token", nullptr));
+    EXPECT_NO_FATAL_FAILURE(DSchedCollabManager::GetInstance().DisconnectAllSessionsForUser(-1));
+    EXPECT_NE(DSchedCollabManager::GetInstance().collabs_.empty(), true);
+    DSchedCollabManager::GetInstance().collabs_.clear();
+    DTEST_LOG << "DSchedCollabManagerTest DisconnectAllSessionsForUser_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: DisconnectAllSessionsForUser_002
+ * @tc.desc: verify DisconnectAllSessionsForUser cleans matching user sessions and keeps others
+ * @tc.type: FUNC
+ * @tc.require: I6SJQ6
+ */
+HWTEST_F(DSchedCollabManagerTest, DisconnectAllSessionsForUser_002, TestSize.Level3)
+{
+    DTEST_LOG << "DSchedCollabManagerTest DisconnectAllSessionsForUser_002 begin" << std::endl;
+    DSchedCollabManager::GetInstance().collabs_.clear();
+    const std::string matchToken = "user.match.token";
+    const std::string unmatchToken = "user.unmatch.token";
+    DSchedCollabInfo info;
+    std::shared_ptr<DSchedCollab> matchCollab = std::make_shared<DSchedCollab>(matchToken, info);
+    matchCollab->collabInfo_.direction_ = COLLAB_SOURCE;
+    matchCollab->collabInfo_.srcAccountInfo_.userId = 100;
+    std::shared_ptr<DSchedCollab> unmatchCollab = std::make_shared<DSchedCollab>(unmatchToken, info);
+    unmatchCollab->collabInfo_.direction_ = COLLAB_SINK;
+    unmatchCollab->collabInfo_.sinkUserId_ = 999;
+    DSchedCollabManager::GetInstance().collabs_.insert(std::make_pair(matchToken, matchCollab));
+    DSchedCollabManager::GetInstance().collabs_.insert(std::make_pair(unmatchToken, unmatchCollab));
+    EXPECT_NO_FATAL_FAILURE(DSchedCollabManager::GetInstance().DisconnectAllSessionsForUser(100));
+    usleep(WAITTIME);
+    EXPECT_EQ(DSchedCollabManager::GetInstance().collabs_.count(matchToken), static_cast<size_t>(0));
+    EXPECT_EQ(DSchedCollabManager::GetInstance().collabs_.count(unmatchToken), static_cast<size_t>(1));
+    DSchedCollabManager::GetInstance().collabs_.clear();
+    DTEST_LOG << "DSchedCollabManagerTest DisconnectAllSessionsForUser_002 end" << std::endl;
+}
 }
 }

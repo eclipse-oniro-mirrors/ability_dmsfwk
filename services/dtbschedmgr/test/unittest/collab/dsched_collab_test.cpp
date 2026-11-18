@@ -729,6 +729,212 @@ HWTEST_F(DSchedCollabTest, ExeStartAbility_002, TestSize.Level3)
     DTEST_LOG << "DSchedCollabTest ExeStartAbility_002 end" << std::endl;
 }
 
+/**
+ * @tc.name: GetCollabInfo_001
+ * @tc.desc: verify GetCollabInfo returns a consistent snapshot of collabInfo_ fields
+ * @tc.type: FUNC
+ * @tc.require: I6SJQ6
+ */
+HWTEST_F(DSchedCollabTest, GetCollabInfo_001, TestSize.Level3)
+{
+    DTEST_LOG << "DSchedCollabTest GetCollabInfo_001 begin" << std::endl;
+    ASSERT_NE(dSchedCollab_, nullptr);
+    dSchedCollab_->collabInfo_.collabToken_ = "token_snapshot";
+    dSchedCollab_->collabInfo_.srcInfo_.pid_ = TEST_CALLER_PID;
+    dSchedCollab_->collabInfo_.srcInfo_.bundleName_ = "snapshot.src.bundle";
+    dSchedCollab_->collabInfo_.sinkInfo_.pid_ = TEST_CALLEE_PID;
+    dSchedCollab_->collabInfo_.sinkInfo_.accessToken_ = TEST_CALLEE_UID;
+    DSchedCollabInfo collabInfo = dSchedCollab_->GetCollabInfo();
+    EXPECT_EQ(collabInfo.collabToken_, "token_snapshot");
+    EXPECT_EQ(collabInfo.srcInfo_.pid_, TEST_CALLER_PID);
+    EXPECT_EQ(collabInfo.srcInfo_.bundleName_, "snapshot.src.bundle");
+    EXPECT_EQ(collabInfo.sinkInfo_.pid_, TEST_CALLEE_PID);
+    EXPECT_EQ(collabInfo.sinkInfo_.accessToken_, TEST_CALLEE_UID);
+    EXPECT_EQ(dSchedCollab_->collabInfo_.collabToken_, "token_snapshot");
+    DTEST_LOG << "DSchedCollabTest GetCollabInfo_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: GetCollabInfo_002
+ * @tc.desc: verify GetCollabInfo on a newly created object returns default values
+ * @tc.type: FUNC
+ * @tc.require: I6SJQ6
+ */
+HWTEST_F(DSchedCollabTest, GetCollabInfo_002, TestSize.Level3)
+{
+    DTEST_LOG << "DSchedCollabTest GetCollabInfo_002 begin" << std::endl;
+    ASSERT_NE(dSchedCollab_, nullptr);
+    DSchedCollabInfo collabInfo = dSchedCollab_->GetCollabInfo();
+    EXPECT_TRUE(collabInfo.collabToken_.empty());
+    EXPECT_EQ(collabInfo.srcCollabSessionId_, -1);
+    EXPECT_EQ(collabInfo.sinkInfo_.pid_, -1);
+    EXPECT_EQ(collabInfo.sinkInfo_.uid_, -1);
+    DTEST_LOG << "DSchedCollabTest GetCollabInfo_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: SetSrcCollabInfo_001
+ * @tc.desc: verify SetSrcCollabInfo updates collabInfo_ and preserves srcClientCB_
+ * @tc.type: FUNC
+ * @tc.require: I6SJQ6
+ */
+HWTEST_F(DSchedCollabTest, SetSrcCollabInfo_001, TestSize.Level3)
+{
+    DTEST_LOG << "DSchedCollabTest SetSrcCollabInfo_001 begin" << std::endl;
+    ASSERT_NE(dSchedCollab_, nullptr);
+    dSchedCollab_->collabInfo_.srcClientCB_ = sptr<DistributedSchedService>(new DistributedSchedService());
+    ASSERT_NE(dSchedCollab_->collabInfo_.srcClientCB_, nullptr);
+    DSchedCollabInfo info;
+    info.collabToken_ = "set.src.token";
+    info.srcInfo_.pid_ = TEST_CALLER_PID;
+    info.srcInfo_.bundleName_ = "set.src.bundle";
+    info.srcClientCB_ = nullptr;
+    dSchedCollab_->SetSrcCollabInfo(info);
+    EXPECT_EQ(dSchedCollab_->collabInfo_.collabToken_, "set.src.token");
+    EXPECT_EQ(dSchedCollab_->collabInfo_.srcInfo_.pid_, TEST_CALLER_PID);
+    EXPECT_EQ(dSchedCollab_->collabInfo_.srcInfo_.bundleName_, "set.src.bundle");
+    EXPECT_NE(dSchedCollab_->collabInfo_.srcClientCB_, nullptr);
+    DTEST_LOG << "DSchedCollabTest SetSrcCollabInfo_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: SetSinkCollabInfo_001
+ * @tc.desc: verify SetSinkCollabInfo with null cmd keeps collabInfo_ unchanged
+ * @tc.type: FUNC
+ * @tc.require: I6SJQ6
+ */
+HWTEST_F(DSchedCollabTest, SetSinkCollabInfo_001, TestSize.Level3)
+{
+    DTEST_LOG << "DSchedCollabTest SetSinkCollabInfo_001 begin" << std::endl;
+    ASSERT_NE(dSchedCollab_, nullptr);
+    dSchedCollab_->collabInfo_.srcInfo_.pid_ = TEST_CALLER_PID;
+    dSchedCollab_->SetSinkCollabInfo(nullptr);
+    EXPECT_EQ(dSchedCollab_->collabInfo_.srcInfo_.pid_, TEST_CALLER_PID);
+    DTEST_LOG << "DSchedCollabTest SetSinkCollabInfo_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: SetSinkCollabInfo_002
+ * @tc.desc: verify SetSinkCollabInfo copies SinkStartCmd fields into collabInfo_
+ * @tc.type: FUNC
+ * @tc.require: I6SJQ6
+ */
+HWTEST_F(DSchedCollabTest, SetSinkCollabInfo_002, TestSize.Level3)
+{
+    DTEST_LOG << "DSchedCollabTest SetSinkCollabInfo_002 begin" << std::endl;
+    ASSERT_NE(dSchedCollab_, nullptr);
+    auto startCmd = std::make_shared<SinkStartCmd>();
+    ASSERT_NE(startCmd, nullptr);
+    startCmd->srcPid_ = TEST_CALLER_PID;
+    startCmd->srcUid_ = TEST_CALLER_UID;
+    startCmd->srcDeviceId_ = "sink.src.device";
+    startCmd->srcBundleName_ = "sink.src.bundle";
+    startCmd->sinkDeviceId_ = "sink.peer.device";
+    startCmd->sinkBundleName_ = "sink.peer.bundle";
+    startCmd->needSendBigData_ = true;
+    dSchedCollab_->SetSinkCollabInfo(startCmd);
+    EXPECT_EQ(dSchedCollab_->collabInfo_.srcInfo_.pid_, TEST_CALLER_PID);
+    EXPECT_EQ(dSchedCollab_->collabInfo_.srcInfo_.uid_, TEST_CALLER_UID);
+    EXPECT_EQ(dSchedCollab_->collabInfo_.srcInfo_.deviceId_, "sink.src.device");
+    EXPECT_EQ(dSchedCollab_->collabInfo_.srcInfo_.bundleName_, "sink.src.bundle");
+    EXPECT_EQ(dSchedCollab_->collabInfo_.sinkInfo_.deviceId_, "sink.peer.device");
+    EXPECT_EQ(dSchedCollab_->collabInfo_.sinkInfo_.bundleName_, "sink.peer.bundle");
+    EXPECT_TRUE(dSchedCollab_->collabInfo_.srcOpt_.needSendBigData_);
+    DTEST_LOG << "DSchedCollabTest SetSinkCollabInfo_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: SaveSinkAbilityData_001
+ * @tc.desc: verify SaveSinkAbilityData writes pid/uid/accessToken into collabInfo_
+ * @tc.type: FUNC
+ * @tc.require: I6SJQ6
+ */
+HWTEST_F(DSchedCollabTest, SaveSinkAbilityData_001, TestSize.Level3)
+{
+    DTEST_LOG << "DSchedCollabTest SaveSinkAbilityData_001 begin" << std::endl;
+    ASSERT_NE(dSchedCollab_, nullptr);
+    dSchedCollab_->collabInfo_.sinkInfo_.pid_ = -1;
+    dSchedCollab_->collabInfo_.sinkInfo_.uid_ = -1;
+    dSchedCollab_->collabInfo_.sinkInfo_.accessToken_ = -1;
+    const std::string collabToken = "save.sink.token";
+    int32_t result = 0;
+    EXPECT_EQ(dSchedCollab_->SaveSinkAbilityData(collabToken, result, TEST_CALLEE_PID,
+        TEST_CALLEE_UID, TEST_CALLEE_UID + 1), ERR_OK);
+    EXPECT_EQ(dSchedCollab_->collabInfo_.sinkInfo_.pid_, TEST_CALLEE_PID);
+    EXPECT_EQ(dSchedCollab_->collabInfo_.sinkInfo_.uid_, TEST_CALLEE_UID);
+    EXPECT_EQ(dSchedCollab_->collabInfo_.sinkInfo_.accessToken_, TEST_CALLEE_UID + 1);
+    DTEST_LOG << "DSchedCollabTest SaveSinkAbilityData_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: HandleSourceGetVersionCmd_001
+ * @tc.desc: verify HandleSourceGetVersionCmd with invalid json keeps sinkCollabVersion_ unchanged
+ * @tc.type: FUNC
+ * @tc.require: I6SJQ6
+ */
+HWTEST_F(DSchedCollabTest, HandleSourceGetVersionCmd_001, TestSize.Level3)
+{
+    DTEST_LOG << "DSchedCollabTest HandleSourceGetVersionCmd_001 begin" << std::endl;
+    ASSERT_NE(dSchedCollab_, nullptr);
+    dSchedCollab_->collabInfo_.sinkCollabVersion_ = 0;
+    EXPECT_NO_FATAL_FAILURE(dSchedCollab_->HandleSourceGetVersionCmd(""));
+    EXPECT_EQ(dSchedCollab_->collabInfo_.sinkCollabVersion_, 0);
+    DTEST_LOG << "DSchedCollabTest HandleSourceGetVersionCmd_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: HandleSourceGetVersionCmd_002
+ * @tc.desc: verify HandleSourceGetVersionCmd writes sinkCollabVersion_ from valid cmd json
+ * @tc.type: FUNC
+ * @tc.require: I6SJQ6
+ */
+HWTEST_F(DSchedCollabTest, HandleSourceGetVersionCmd_002, TestSize.Level3)
+{
+    DTEST_LOG << "DSchedCollabTest HandleSourceGetVersionCmd_002 begin" << std::endl;
+    ASSERT_NE(dSchedCollab_, nullptr);
+    auto cmd = std::make_shared<GetSinkCollabVersionCmd>();
+    ASSERT_NE(cmd, nullptr);
+    cmd->sinkCollabVersion_ = 5;
+    std::string jsonStr;
+    ASSERT_EQ(cmd->Marshal(jsonStr), ERR_OK);
+    dSchedCollab_->collabInfo_.sinkCollabVersion_ = 0;
+    EXPECT_NO_FATAL_FAILURE(dSchedCollab_->HandleSourceGetVersionCmd(jsonStr));
+    EXPECT_EQ(dSchedCollab_->collabInfo_.sinkCollabVersion_, 5);
+    DTEST_LOG << "DSchedCollabTest HandleSourceGetVersionCmd_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: PackNotifyResultCmd_002
+ * @tc.desc: verify PackNotifyResultCmd packs fields from the collabInfo_ snapshot
+ * @tc.type: FUNC
+ * @tc.require: I6SJQ6
+ */
+HWTEST_F(DSchedCollabTest, PackNotifyResultCmd_002, TestSize.Level3)
+{
+    DTEST_LOG << "DSchedCollabTest PackNotifyResultCmd_002 begin" << std::endl;
+    ASSERT_NE(dSchedCollab_, nullptr);
+    dSchedCollab_->collabInfo_.collabToken_ = "pack.notify.token";
+    dSchedCollab_->collabInfo_.sinkCollabSessionId_ = 3;
+    dSchedCollab_->collabInfo_.sinkInfo_.pid_ = TEST_CALLEE_PID;
+    dSchedCollab_->collabInfo_.sinkInfo_.accessToken_ = TEST_CALLEE_UID;
+    dSchedCollab_->collabInfo_.sinkInfo_.socketName_ = "pack.notify.socket";
+    dSchedCollab_->collabInfo_.sinkUserId_ = 100;
+    dSchedCollab_->collabInfo_.sinkAccountId_ = 200;
+    auto cmd = std::make_shared<NotifyResultCmd>();
+    ASSERT_NE(cmd, nullptr);
+    int32_t result = 0;
+    EXPECT_EQ(dSchedCollab_->PackNotifyResultCmd(cmd, result), ERR_OK);
+    EXPECT_EQ(cmd->command_, NOTIFY_RESULT_CMD);
+    EXPECT_EQ(cmd->collabToken_, "pack.notify.token");
+    EXPECT_EQ(cmd->sinkCollabSessionId_, 3);
+    EXPECT_EQ(cmd->sinkPid_, TEST_CALLEE_PID);
+    EXPECT_EQ(cmd->sinkAccessToken_, TEST_CALLEE_UID);
+    EXPECT_EQ(cmd->sinkSocketName_, "pack.notify.socket");
+    EXPECT_EQ(cmd->sinkUserId_, 100);
+    EXPECT_EQ(cmd->sinkAccountId_, 200);
+    DTEST_LOG << "DSchedCollabTest PackNotifyResultCmd_002 end" << std::endl;
+}
+
 #ifdef EFFICIENCY_MANAGER_ENABLE
 /**
  * @tc.name: ReportDistributedComponentChange_Caller_Add_001

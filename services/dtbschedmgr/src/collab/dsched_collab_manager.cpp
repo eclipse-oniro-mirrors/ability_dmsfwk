@@ -338,8 +338,9 @@ int32_t DSchedCollabManager::DispatchCollabMission(const std::shared_ptr<DSchedC
     auto srcInfo = info;
     auto collabTask = [dCollab, srcInfo]() {
         DSchedCollabInfo info = srcInfo;
-        info.srcClientCB_ = dCollab->collabInfo_.srcClientCB_;
-        dCollab->collabInfo_ = info;
+        // SetSrcCollabInfo takes collabInfoMutex_ internally, keeping the whole-struct
+        // write of dCollab->collabInfo_ serialized with the binder/manager writers.
+        dCollab->SetSrcCollabInfo(info);
         dCollab->UpdateState(SOURCE_START_STATE);
         dCollab->PostSrcStartTask();
     };
@@ -698,7 +699,7 @@ void DSchedCollabManager::DisconnectAllSessionsForUser(int32_t userId)
             if (iter.second == nullptr) {
                 continue;
             }
-            const auto& collabInfo = iter.second->collabInfo_;
+            const auto collabInfo = iter.second->GetCollabInfo();
             bool isTargetUser = false;
             if (collabInfo.direction_ == COLLAB_SOURCE) {
                 isTargetUser = (collabInfo.srcAccountInfo_.userId == userId);
