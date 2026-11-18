@@ -110,6 +110,7 @@ void DSchedTransportSoftbusAdapterTest::TearDownTestCase()
 
 void DSchedTransportSoftbusAdapterTest::TearDown()
 {
+    DSchedTransportSoftbusAdapter::GetInstance().sessions_.clear();
     DTEST_LOG << "DSchedTransportSoftbusAdapterTest::TearDown" << std::endl;
 }
 
