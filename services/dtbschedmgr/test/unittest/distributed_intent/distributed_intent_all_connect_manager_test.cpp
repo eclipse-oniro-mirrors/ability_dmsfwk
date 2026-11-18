@@ -12,6 +12,10 @@
  * limitations under the License.
  */
 
+#include <chrono>
+#include <thread>
+#include <vector>
+
 #include <gtest/gtest.h>
 
 #define private public
@@ -387,6 +391,84 @@ HWTEST_F(DistributedIntentAllConnectManagerTest, RegisterLifecycleCallback_ApiCa
             return ERR_OK;
         };
     EXPECT_EQ(manager.RegisterLifecycleCallback(), ERR_OK);
+}
+
+/**
+ * @tc.name: ApplyResultCallback_PopBeforeNotify_001
+ * @tc.desc: Verify ApplyResultCallback pops queue before calling NotifyApplyResult
+ * @tc.type: FUNC
+ * @tc.require:
+ */
+HWTEST_F(DistributedIntentAllConnectManagerTest, ApplyResultCallback_PopBeforeNotify, TestSize.Level3)
+{
+    IntentAllConnectManager::applyQueue_.push(PEER_NETWORK_ID);
+    int32_t result = ServiceCollaborationManagerResultCode::PASS;
+    EXPECT_EQ(IntentAllConnectManager::ApplyResultCallback(0, result, ""), ERR_OK);
+    EXPECT_TRUE(IntentAllConnectManager::applyQueue_.empty());
+    auto& manager = IntentAllConnectManager::GetInstance();
+    EXPECT_TRUE(manager.decisions_.find(PEER_NETWORK_ID) != manager.decisions_.end());
+}
+
+/**
+ * @tc.name: ApplyResultCallback_ConcurrentMultiThread_001
+ * @tc.desc: Verify ApplyResultCallback handles concurrent calls safely under mutex_ protection
+ * @tc.type: FUNC
+ * @tc.require:
+ */
+HWTEST_F(DistributedIntentAllConnectManagerTest, ApplyResultCallback_ConcurrentMultiThread, TestSize.Level3)
+{
+    const int32_t count = 10;
+    for (int32_t i = 0; i < count; i++) {
+        IntentAllConnectManager::applyQueue_.push("device_" + std::to_string(i));
+    }
+
+    std::vector<std::thread> threads;
+    for (int32_t i = 0; i < count; i++) {
+        threads.emplace_back([]() {
+            IntentAllConnectManager::ApplyResultCallback(0,
+                ServiceCollaborationManagerResultCode::PASS, "");
+        });
+    }
+    for (auto& t : threads) {
+        t.join();
+    }
+
+    EXPECT_TRUE(IntentAllConnectManager::applyQueue_.empty());
+    auto& manager = IntentAllConnectManager::GetInstance();
+    EXPECT_EQ(manager.decisions_.size(), static_cast<size_t>(count));
+}
+
+/**
+ * @tc.name: ApplyResource_MutexReleasedDuringWait_001
+ * @tc.desc: Verify mutex_ is released before WaitForApplyResult so PublishServiceState is not blocked
+ * @tc.type: FUNC
+ * @tc.require:
+ */
+HWTEST_F(DistributedIntentAllConnectManagerTest, ApplyResource_MutexReleasedDuringWait, TestSize.Level3)
+{
+    auto& manager = IntentAllConnectManager::GetInstance();
+    manager.api_.ServiceCollaborationManager_ApplyAdvancedResource =
+        [](const char*, const char*, ServiceCollaborationManager_ResourceRequestInfoSets*,
+           ServiceCollaborationManager_Callback*) -> int32_t { return ERR_OK; };
+    manager.api_.ServiceCollaborationManager_PublishServiceState =
+        [](const char*, const char*, const char*, ServiceCollaborationManagerBussinessStatus) -> int32_t {
+        return ERR_OK;
+    };
+
+    std::thread applyThread([&manager]() {
+        manager.ApplyResource(PEER_NETWORK_ID);
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    auto start = std::chrono::steady_clock::now();
+    EXPECT_EQ(manager.PublishServiceState(PEER_NETWORK_ID, SCM_IDLE), ERR_OK);
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now() - start);
+    EXPECT_LT(elapsed.count(), 5);
+
+    manager.NotifyApplyResult(PEER_NETWORK_ID, true);
+    applyThread.join();
 }
 
 } // namespace DistributedSchedule
