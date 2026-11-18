@@ -939,8 +939,19 @@ HWTEST_F(DSchedTransportSoftbusAdapterTest, GetSessionIdByDeviceId_001, TestSize
     DSchedTransportSoftbusAdapter::GetInstance().RegisterListener(serviceType, listener);
     DSchedTransportSoftbusAdapter::GetInstance().UnregisterListener(serviceType, listener);
 
+    // Construct the no matched session scenario explicitly, don't depend on whether OnBind succeeds.
+    DSchedTransportSoftbusAdapter::GetInstance().sessions_.clear();
     bool ret = DSchedTransportSoftbusAdapter::GetInstance().GetSessionIdByDeviceId(PEERDEVICEID, sessionId);
     EXPECT_EQ(ret, false);
+
+    SessionInfo info = {SESSIONID, "localDeviceId", PEERDEVICEID, SESSIONNAME, false};
+    auto session = std::make_shared<DSchedSoftbusSession>(info);
+    DSchedTransportSoftbusAdapter::GetInstance().sessions_[SESSIONID] = session;
+    ret = DSchedTransportSoftbusAdapter::GetInstance().GetSessionIdByDeviceId(PEERDEVICEID, sessionId);
+    EXPECT_EQ(ret, true);
+    EXPECT_EQ(sessionId, SESSIONID);
+
+    DSchedTransportSoftbusAdapter::GetInstance().sessions_.clear();
     DTEST_LOG << "DSchedTransportSoftbusAdapterTest GetSessionIdByDeviceId_001 end" << std::endl;
 }
 
