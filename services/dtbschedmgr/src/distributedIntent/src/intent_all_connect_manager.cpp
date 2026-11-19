@@ -164,7 +164,7 @@ bool IntentAllConnectManager::IsAllConnectAvailable()
 
 int32_t IntentAllConnectManager::ApplyResource(const std::string &peerNetworkId)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
     HILOGI("ApplyResource enter, peerNetworkId %{public}s.", GetAnonymStr(peerNetworkId).c_str());
     if (api_.ServiceCollaborationManager_ApplyAdvancedResource == nullptr) {
         HILOGE("ApplyAdvancedResource api is null.");
@@ -192,6 +192,7 @@ int32_t IntentAllConnectManager::ApplyResource(const std::string &peerNetworkId)
         return ret;
     }
 
+    lock.unlock();
     return WaitForApplyResult(peerNetworkId);
 }
 
@@ -271,13 +272,17 @@ int32_t IntentAllConnectManager::ApplyResultCallback(int32_t errorcode, int32_t 
 {
     HILOGI("ApplyResult, errorcode %{public}d, result %{public}d.", errorcode, result);
     bool isApproved = (result == ServiceCollaborationManagerResultCode::PASS);
-    if (applyQueue_.empty()) {
-        HILOGE("ApplyResult but applyQueue is empty.");
-        return ERR_OK;
+    std::string peerNetworkId;
+    {
+        std::lock_guard<std::mutex> lock(IntentAllConnectManager::GetInstance().mutex_);
+        if (applyQueue_.empty()) {
+            HILOGE("ApplyResult but applyQueue is empty.");
+            return ERR_OK;
+        }
+        peerNetworkId = applyQueue_.front();
+        applyQueue_.pop();
     }
-    std::string peerNetworkId = applyQueue_.front();
     IntentAllConnectManager::GetInstance().NotifyApplyResult(peerNetworkId, isApproved);
-    applyQueue_.pop();
     return ERR_OK;
 }
 
