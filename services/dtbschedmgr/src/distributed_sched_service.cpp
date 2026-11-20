@@ -4506,11 +4506,11 @@ int32_t DistributedSchedService::CheckTargetPermission4DiffBundle(const OHOS::AA
 }
 
 int32_t DistributedSchedService::CheckCollabStartPermission(const OHOS::AAFwk::Want& want,
-    const CallerInfo& callerInfo, const AccountInfo& accountInfo, bool needQueryExtension)
+    const CallerInfo& callerInfo, const AccountInfo& accountInfo, bool needQueryExtension, int32_t userId)
 {
     DistributedSchedPermission& permissionInstance = DistributedSchedPermission::GetInstance();
     AppExecFwk::AbilityInfo targetAbility;
-    bool result = permissionInstance.GetTargetAbility(want, targetAbility, needQueryExtension);
+    bool result = permissionInstance.GetTargetAbility(want, targetAbility, needQueryExtension, userId);
     if (!result) {
         HILOGE("GetTargetAbility can not find the target ability");
         return INVALID_PARAMETERS_ERR;

@@ -34,21 +34,24 @@ class BundleManagerInternal {
 
 public:
     static bool GetCallerAppIdFromBms(int32_t callingUid, std::string& appId);
-    static bool GetCallerAppIdFromBms(const std::string& bundleName, std::string& appId);
+    static bool GetCallerAppIdFromBms(const std::string& bundleName, std::string& appId, int32_t userId = -1);
     static bool GetAppIdAndAppIdentifierFromBms(const std::string& bundleName, std::string& appId,
         std::string& appIdentifier);
     static bool GetSpecifyBundleNameFromBms(int32_t callingUid, std::string& bundleName);
     static bool GetBundleNameListFromBms(int32_t callingUid, std::vector<std::string>& bundleNameList);
     static bool GetBundleNameListFromBms(int32_t callingUid, std::vector<std::u16string>& u16BundleNameList);
-    static bool QueryAbilityInfo(const AAFwk::Want& want, AppExecFwk::AbilityInfo& abilityInfo);
-    static bool QueryExtensionAbilityInfo(const AAFwk::Want& want, AppExecFwk::ExtensionAbilityInfo& extensionInfo);
+    static bool QueryAbilityInfo(const AAFwk::Want& want, AppExecFwk::AbilityInfo& abilityInfo,
+        int32_t userId = -1);
+    static bool QueryExtensionAbilityInfo(const AAFwk::Want& want, AppExecFwk::ExtensionAbilityInfo& extensionInfo,
+        int32_t userId = -1);
     static void InitAbilityInfoFromExtension(const AppExecFwk::ExtensionAbilityInfo &extensionAbilityInfo,
         AppExecFwk::AbilityInfo &abilityInfo);
     static bool IsSameAppId(const std::string& callerAppId, const std::string& targetBundleName);
     static bool IsSameDeveloperId(const std::string &bundleNameInCurrentSide,
         const std::string &developerId4OtherSide);
     static int32_t GetLocalBundleInfo(const std::string& bundleName, AppExecFwk::BundleInfo &localBundleInfo);
-    static int32_t GetLocalBundleInfoV9(const std::string& bundleName, AppExecFwk::BundleInfo &bundleInfo);
+    static int32_t GetLocalBundleInfoV9(const std::string& bundleName, AppExecFwk::BundleInfo &bundleInfo,
+        int32_t userId = -1);
     static int32_t GetLocalAbilityInfo(const std::string& bundleName,
         const std::string& moduleName, const std::string& abilityName, AppExecFwk::AbilityInfo &abilityInfo);
     static bool GetContinueBundle4Src(const std::string& srcBundleName,
@@ -70,7 +73,7 @@ public:
         const uint16_t& bundleNameId, std::string& bundleName);
     static int32_t GetApplicationInfoFromBms(const std::string& bundleName, const AppExecFwk::BundleFlag flag,
         const int32_t userId, AppExecFwk::ApplicationInfo &appInfo);
-    static ErrCode QueryOsAccount(int32_t& activeAccountId);
+    static ErrCode QueryOsAccount(int32_t& activeAccountId, int32_t uid = -1);
     static bool GetSrcAppIdentifierVec(std::string appServiceCapabilities,
         std::vector<std::string>& srcAppIdentifierVec, const std::string& bundleName);
 private:

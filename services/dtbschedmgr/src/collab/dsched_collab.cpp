@@ -611,7 +611,12 @@ int32_t DSchedCollab::PackStartCmd(std::shared_ptr<SinkStartCmd>& cmd)
 int32_t DSchedCollab::PackPartCmd(std::shared_ptr<SinkStartCmd>& cmd)
 {
     AppExecFwk::BundleInfo localBundleInfo;
-    int32_t ret = BundleManagerInternal::GetLocalBundleInfoV9(cmd->srcBundleName_, localBundleInfo);
+    int32_t srcUserId = -1;
+    if (BundleManagerInternal::QueryOsAccount(srcUserId, cmd->srcUid_) != ERR_OK) {
+        HILOGW("resolve srcUserId by uid failed, uid: %{public}d, fallback to active user", cmd->srcUid_);
+        srcUserId = -1;
+    }
+    int32_t ret = BundleManagerInternal::GetLocalBundleInfoV9(cmd->srcBundleName_, localBundleInfo, srcUserId);
     if (ret != ERR_OK) {
         HILOGE("pack start cmd failed, the bundle is not installed on local device.");
         return ret;

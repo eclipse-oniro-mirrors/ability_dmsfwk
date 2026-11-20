@@ -629,7 +629,13 @@ bool DistributedSchedPermission::ParseGroupInfos(const std::string& returnGroupS
 bool DistributedSchedPermission::GetTargetAbility(const AAFwk::Want& want,
     AppExecFwk::AbilityInfo& targetAbility, bool needQueryExtension) const
 {
-    if (BundleManagerInternal::QueryAbilityInfo(want, targetAbility)) {
+    return GetTargetAbility(want, targetAbility, needQueryExtension, -1);
+}
+
+bool DistributedSchedPermission::GetTargetAbility(const AAFwk::Want& want,
+    AppExecFwk::AbilityInfo& targetAbility, bool needQueryExtension, int32_t userId) const
+{
+    if (BundleManagerInternal::QueryAbilityInfo(want, targetAbility, userId)) {
         if (want.GetIntParam(DMS_MISSION_ID, DEFAULT_DMS_MISSION_ID) != DEFAULT_DMS_MISSION_ID &&
             (targetAbility.type == AppExecFwk::AbilityType::SERVICE ||
             targetAbility.type == AppExecFwk::AbilityType::EXTENSION)) {
@@ -642,7 +648,7 @@ bool DistributedSchedPermission::GetTargetAbility(const AAFwk::Want& want,
         HILOGI("QueryAbilityInfo failed, try to QueryExtensionAbilityInfo");
         // try to find extension
         AppExecFwk::ExtensionAbilityInfo extensionAbility;
-        if (BundleManagerInternal::QueryExtensionAbilityInfo(want, extensionAbility)) {
+        if (BundleManagerInternal::QueryExtensionAbilityInfo(want, extensionAbility, userId)) {
             // extensionAbilityInfo translates to abilityInfo
             BundleManagerInternal::InitAbilityInfoFromExtension(extensionAbility, targetAbility);
             return true;
