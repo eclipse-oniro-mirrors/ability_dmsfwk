@@ -26,14 +26,14 @@ public:
     virtual ~IBundleManagerInternal() = default;
     virtual bool GetCallerAppIdFromBms(int32_t callingUid, std::string& appId) = 0;
     virtual bool GetCallerAppIdFromBms(const std::string& bundleName, std::string& appId,
-        int32_t userId = -1);
+        int32_t userId);
     virtual bool GetSpecifyBundleNameFromBms(int32_t callingUid, std::string& bundleName) = 0;
     virtual bool GetBundleNameListFromBms(int32_t callingUid, std::vector<std::string>& bundleNameList) = 0;
     virtual bool GetBundleNameListFromBms(int32_t callingUid, std::vector<std::u16string>& u16BundleNameList) = 0;
     virtual bool QueryAbilityInfo(const AAFwk::Want& want, AppExecFwk::AbilityInfo& abilityInfo,
-        int32_t userId = -1) = 0;
+        int32_t userId) = 0;
     virtual bool QueryExtensionAbilityInfo(const AAFwk::Want& want,
-        AppExecFwk::ExtensionAbilityInfo& extensionInfo, int32_t userId = -1) = 0;
+        AppExecFwk::ExtensionAbilityInfo& extensionInfo, int32_t userId) = 0;
     virtual void InitAbilityInfoFromExtension(const AppExecFwk::ExtensionAbilityInfo &extensionAbilityInfo,
         AppExecFwk::AbilityInfo &abilityInfo) = 0;
     virtual bool IsSameAppId(const std::string& callerAppId, const std::string& targetBundleName) = 0;
@@ -41,7 +41,7 @@ public:
         const std::string &developerId4OtherSide) = 0;
     virtual int32_t GetLocalBundleInfo(const std::string& bundleName, AppExecFwk::BundleInfo &localBundleInfo) = 0;
     virtual int32_t GetLocalBundleInfoV9(const std::string& bundleName, AppExecFwk::BundleInfo &bundleInfo,
-        int32_t userId = -1) = 0;
+        int32_t userId) = 0;
     virtual int32_t GetLocalAbilityInfo(const std::string& bundleName,
         const std::string& moduleName, const std::string& abilityName, AppExecFwk::AbilityInfo &abilityInfo) = 0;
     virtual bool GetContinueBundle4Src(const std::string& srcBundleName,
@@ -63,7 +63,7 @@ public:
         const uint16_t& bundleNameId, std::string& bundleName) = 0;
     virtual int32_t GetApplicationInfoFromBms(const std::string& bundleName, const AppExecFwk::BundleFlag flag,
         const int32_t userId, AppExecFwk::ApplicationInfo &appInfo) = 0;
-    virtual ErrCode QueryOsAccount(int32_t& activeAccountId, int32_t uid = -1) = 0;
+    virtual ErrCode QueryOsAccount(int32_t& activeAccountId, int32_t uid) = 0;
 public:
     static inline std::shared_ptr<IBundleManagerInternal> bundleMgrMock = nullptr;
 };

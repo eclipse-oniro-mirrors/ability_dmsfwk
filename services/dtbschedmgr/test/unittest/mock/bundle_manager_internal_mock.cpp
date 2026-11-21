@@ -70,7 +70,7 @@ bool BundleManagerInternal::QueryAbilityInfo(const AAFwk::Want& want, AppExecFwk
         return false;
     }
     (void)userId;
-    return IBundleManagerInternal::bundleMgrMock->QueryAbilityInfo(want, abilityInfo);
+    return IBundleManagerInternal::bundleMgrMock->QueryAbilityInfo(want, abilityInfo, -1);
 }
 
 bool BundleManagerInternal::QueryExtensionAbilityInfo(const AAFwk::Want& want,
@@ -80,7 +80,7 @@ bool BundleManagerInternal::QueryExtensionAbilityInfo(const AAFwk::Want& want,
         return false;
     }
     (void)userId;
-    return IBundleManagerInternal::bundleMgrMock->QueryExtensionAbilityInfo(want, extensionInfo);
+    return IBundleManagerInternal::bundleMgrMock->QueryExtensionAbilityInfo(want, extensionInfo, -1);
 }
 
 void BundleManagerInternal::InitAbilityInfoFromExtension(const AppExecFwk::ExtensionAbilityInfo &extensionAbilityInfo,
@@ -125,7 +125,7 @@ int32_t BundleManagerInternal::GetLocalBundleInfoV9(const std::string& bundleNam
         return ERR_OK;
     }
     (void)userId;
-    return IBundleManagerInternal::bundleMgrMock->GetLocalBundleInfoV9(bundleName, bundleInfo);
+    return IBundleManagerInternal::bundleMgrMock->GetLocalBundleInfoV9(bundleName, bundleInfo, -1);
 }
 
 int32_t BundleManagerInternal::GetLocalAbilityInfo(const std::string& bundleName,
