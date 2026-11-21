@@ -912,6 +912,10 @@ ohos_unittest("dmsmissionmanagertest") {
       "${dms_path}/services/dtbschedmgr/src/mission/extension/distributed_data_change_listener.cpp",
       "${dms_path}/services/dtbschedmgr/src/mission/extension/distributed_mission_change_listener.cpp",
     ]
+    sources += [
+      "unittest/mission/kvstore_death_recipient_test.cpp",
+      "unittest/mock_remote_stub.cpp",
+    ]
   }
   sources += dtbschedmgr_sources
 
@@ -942,7 +946,10 @@ ohos_unittest("bundlemanagerinternaltest") {
     blocklist = "./cfi_blocklist.txt"
   }
   module_out_path = module_output_path
-  sources = [ "unittest/bundle_manager_internal_test.cpp" ]
+  sources = [
+    "unittest/bundle_manager_internal_test.cpp",
+    "unittest/bundle_manager_callback_stub_test.cpp",
+  ]
   sources += dtbschedmgr_sources
 
   configs = [
@@ -1053,6 +1060,7 @@ ohos_unittest("distributedwanttest") {
 
   sources = [
     "unittest/distributedWant/distributed_operation_test.cpp",
+    "unittest/distributedWant/distributed_operation_builder_test.cpp",
     "unittest/distributedWant/distributed_want_params_test.cpp",
     "unittest/distributedWant/distributed_want_params_wrapper_test.cpp",
     "unittest/distributedWant/distributed_want_test.cpp",
@@ -1092,6 +1100,7 @@ ohos_unittest("dmsbasetest") {
     "unittest/dfx/distributed_ue_test.cpp",
     "unittest/dfx/dms_continue_time_dumper_test.cpp",
     "unittest/dfx/dms_hisysevent_report_test.cpp",
+    "unittest/dfx/dms_hitrace_chain_test.cpp",
     "unittest/mock/dnetwork_adapter_mock.cpp",
     "unittest/mock_distributed_sched.cpp",
   ]
@@ -1521,8 +1530,12 @@ ohos_unittest("abilityconnectionwrappertest") {
     "unittest/ability_connection_wrapper_stub_test.cpp",
     "unittest/connect_death_recipient_test.cpp",
     "unittest/distributed_device_node_listener_test.cpp",
+    "unittest/distributed_event_died_listener_test.cpp",
     "unittest/mock_remote_stub.cpp",
   ]
+  if (dmsfwk_standard_form_share) {
+    sources += [ "unittest/form_mgr_death_recipient_test.cpp" ]
+  }
   sources += dtbschedmgr_sources
   configs = [
     ":test_config",
