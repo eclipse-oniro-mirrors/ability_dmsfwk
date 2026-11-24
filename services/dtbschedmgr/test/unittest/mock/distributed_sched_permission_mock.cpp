@@ -30,9 +30,16 @@ int32_t DistributedSchedPermission::GetAccountInfo(const std::string& remoteNetw
 bool DistributedSchedPermission::GetTargetAbility(const AAFwk::Want& want,
     AppExecFwk::AbilityInfo& targetAbility, bool needQueryExtension) const
 {
+    return GetTargetAbility(want, targetAbility, needQueryExtension, -1);
+}
+
+bool DistributedSchedPermission::GetTargetAbility(const AAFwk::Want& want,
+    AppExecFwk::AbilityInfo& targetAbility, bool needQueryExtension, int32_t userId) const
+{
     if (IDistributedSchedPerm::dmsPermMock == nullptr) {
         return 0;
     }
+    (void)userId;
     return IDistributedSchedPerm::dmsPermMock->GetTargetAbility(want, targetAbility, needQueryExtension);
 }
 

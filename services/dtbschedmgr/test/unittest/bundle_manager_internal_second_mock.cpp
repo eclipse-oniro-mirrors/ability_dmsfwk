@@ -30,7 +30,8 @@ bool BundleManagerInternal::GetCallerAppIdFromBms(int32_t callingUid, std::strin
     return IBundleManagerInternal::bundleMgrMock->GetCallerAppIdFromBms(callingUid, appId);
 }
 
-bool BundleManagerInternal::GetCallerAppIdFromBms(const std::string& bundleName, std::string& appId)
+bool BundleManagerInternal::GetCallerAppIdFromBms(const std::string& bundleName, std::string& appId,
+    int32_t userId)
 {
     if (IBundleManagerInternal::bundleMgrMock == nullptr) {
         return false;
@@ -64,21 +65,22 @@ bool BundleManagerInternal::GetBundleNameListFromBms(int32_t callingUid,
     return true;
 }
 
-bool BundleManagerInternal::QueryAbilityInfo(const AAFwk::Want& want, AppExecFwk::AbilityInfo& abilityInfo)
+bool BundleManagerInternal::QueryAbilityInfo(const AAFwk::Want& want, AppExecFwk::AbilityInfo& abilityInfo,
+    int32_t userId)
 {
     if (IBundleManagerInternal::bundleMgrMock == nullptr) {
         return false;
     }
-    return IBundleManagerInternal::bundleMgrMock->QueryAbilityInfo(want, abilityInfo);
+    return IBundleManagerInternal::bundleMgrMock->QueryAbilityInfo(want, abilityInfo, -1);
 }
 
 bool BundleManagerInternal::QueryExtensionAbilityInfo(const AAFwk::Want& want,
-    AppExecFwk::ExtensionAbilityInfo& extensionInfo)
+    AppExecFwk::ExtensionAbilityInfo& extensionInfo, int32_t userId)
 {
     if (IBundleManagerInternal::bundleMgrMock == nullptr) {
         return false;
     }
-    return IBundleManagerInternal::bundleMgrMock->QueryExtensionAbilityInfo(want, extensionInfo);
+    return IBundleManagerInternal::bundleMgrMock->QueryExtensionAbilityInfo(want, extensionInfo, -1);
 }
 
 void BundleManagerInternal::InitAbilityInfoFromExtension(const AppExecFwk::ExtensionAbilityInfo &extensionAbilityInfo,
@@ -117,12 +119,12 @@ int32_t BundleManagerInternal::GetLocalBundleInfo(const std::string& bundleName,
 }
 
 int32_t BundleManagerInternal::GetLocalBundleInfoV9(const std::string& bundleName,
-    AppExecFwk::BundleInfo &bundleInfo)
+    AppExecFwk::BundleInfo &bundleInfo, int32_t userId)
 {
     if (IBundleManagerInternal::bundleMgrMock == nullptr) {
         return ERR_OK;
     }
-    return IBundleManagerInternal::bundleMgrMock->GetLocalBundleInfoV9(bundleName, bundleInfo);
+    return IBundleManagerInternal::bundleMgrMock->GetLocalBundleInfoV9(bundleName, bundleInfo, -1);
 }
 
 int32_t BundleManagerInternal::GetLocalAbilityInfo(const std::string& bundleName,
@@ -215,12 +217,12 @@ int32_t BundleManagerInternal::GetApplicationInfoFromBms(const std::string& bund
     return IBundleManagerInternal::bundleMgrMock->GetApplicationInfoFromBms(bundleName, flag, userId, appInfo);
 }
 
-ErrCode BundleManagerInternal::QueryOsAccount(int32_t& activeAccountId)
+ErrCode BundleManagerInternal::QueryOsAccount(int32_t& activeAccountId, int32_t uid)
 {
     if (IBundleManagerInternal::bundleMgrMock == nullptr) {
         return ERR_OK;
     }
-    return IBundleManagerInternal::bundleMgrMock->QueryOsAccount(activeAccountId);
+    return IBundleManagerInternal::bundleMgrMock->QueryOsAccount(activeAccountId, -1);
 }
 
 int32_t BundleManagerInternal::GetBundleNameId(const std::string& bundleName, uint16_t& bundleNameId)

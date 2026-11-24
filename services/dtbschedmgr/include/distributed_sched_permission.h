@@ -70,6 +70,8 @@ public:
         AccountInfo& accountInfo);
     bool GetTargetAbility(const AAFwk::Want& want, AppExecFwk::AbilityInfo& targetAbility,
         bool needQueryExtension = false) const;
+    bool GetTargetAbility(const AAFwk::Want& want, AppExecFwk::AbilityInfo& targetAbility,
+        bool needQueryExtension, int32_t userId) const;
     void MarkUriPermission(OHOS::AAFwk::Want& want, uint32_t accessToken);
     void RemoveRemoteObjectFromWant(std::shared_ptr<AAFwk::Want> want) const;
     bool IsHigherAclVersion(const CallerInfo& callerInfo);

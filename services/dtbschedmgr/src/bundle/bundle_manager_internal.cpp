@@ -43,11 +43,17 @@ bool BundleManagerInternal::GetCallerAppIdFromBms(int32_t callingUid, std::strin
         HILOGE("bundleNameList empty");
         return false;
     }
-    // getting an arbitrary bundlename for they sharing a same appId, here we get the first one
-    return GetCallerAppIdFromBms(bundleNameList.front(), appId);
+    int32_t userId = -1;
+    ErrCode err = QueryOsAccount(userId, callingUid);
+    if (err != ERR_OK) {
+        HILOGE("QueryOsAccount by uid failed, uid: %{public}d", callingUid);
+        return false;
+    }
+    return GetCallerAppIdFromBms(bundleNameList.front(), appId, userId);
 }
 
-bool BundleManagerInternal::GetCallerAppIdFromBms(const std::string& bundleName, std::string& appId)
+bool BundleManagerInternal::GetCallerAppIdFromBms(const std::string& bundleName, std::string& appId,
+    int32_t userId)
 {
     auto bundleMgr = GetBundleManager();
     if (bundleMgr == nullptr) {
@@ -55,12 +61,19 @@ bool BundleManagerInternal::GetCallerAppIdFromBms(const std::string& bundleName,
         return false;
     }
     int32_t activeAccountId = 0;
-    ErrCode err = QueryOsAccount(activeAccountId);
-    if (err != ERR_OK) {
-        return false;
+    if (userId >= 0) {
+        activeAccountId = userId;
+    } else {
+        ErrCode err = QueryOsAccount(activeAccountId);
+        if (err != ERR_OK) {
+            return false;
+        }
     }
     appId = bundleMgr->GetAppIdByBundleName(bundleName, activeAccountId);
-    HILOGD("appId:%s", GetAnonymStr(appId).c_str());
+    if (appId.empty()) {
+        HILOGW("appId empty, bundleName:%{public}s, userId:%{public}d", bundleName.c_str(), activeAccountId);
+    }
+    HILOGI("appId:%s, userId:%{public}d", GetAnonymStr(appId).c_str(), activeAccountId);
     return true;
 }
 
@@ -137,12 +150,17 @@ bool BundleManagerInternal::GetBundleNameListFromBms(int32_t callingUid,
     return true;
 }
 
-bool BundleManagerInternal::QueryAbilityInfo(const AAFwk::Want& want, AppExecFwk::AbilityInfo& abilityInfo)
+bool BundleManagerInternal::QueryAbilityInfo(const AAFwk::Want& want, AppExecFwk::AbilityInfo& abilityInfo,
+    int32_t userId)
 {
     int32_t activeAccountId = 0;
-    ErrCode err = QueryOsAccount(activeAccountId);
-    if (err != ERR_OK) {
-        return false;
+    if (userId >= 0) {
+        activeAccountId = userId;
+    } else {
+        ErrCode err = QueryOsAccount(activeAccountId);
+        if (err != ERR_OK) {
+            return false;
+        }
     }
     auto bundleMgr = GetBundleManager();
     if (bundleMgr == nullptr) {
@@ -159,12 +177,16 @@ bool BundleManagerInternal::QueryAbilityInfo(const AAFwk::Want& want, AppExecFwk
 }
 
 bool BundleManagerInternal::QueryExtensionAbilityInfo(const AAFwk::Want& want,
-    AppExecFwk::ExtensionAbilityInfo& extensionInfo)
+    AppExecFwk::ExtensionAbilityInfo& extensionInfo, int32_t userId)
 {
     int32_t activeAccountId = 0;
-    ErrCode err = QueryOsAccount(activeAccountId);
-    if (err != ERR_OK) {
-        return false;
+    if (userId >= 0) {
+        activeAccountId = userId;
+    } else {
+        ErrCode err = QueryOsAccount(activeAccountId);
+        if (err != ERR_OK) {
+            return false;
+        }
     }
     auto bundleMgr = GetBundleManager();
     if (bundleMgr == nullptr) {
@@ -261,7 +283,7 @@ int32_t BundleManagerInternal::GetLocalBundleInfo(const std::string& bundleName,
 }
 
 int32_t BundleManagerInternal::GetLocalBundleInfoV9(const std::string& bundleName,
-    AppExecFwk::BundleInfo &bundleInfo)
+    AppExecFwk::BundleInfo &bundleInfo, int32_t userId)
 {
     auto bms = GetBundleManager();
     if (bms == nullptr) {
@@ -270,11 +292,15 @@ int32_t BundleManagerInternal::GetLocalBundleInfoV9(const std::string& bundleNam
     }
 
     int32_t activeAccountId = 0;
-    ErrCode ret = QueryOsAccount(activeAccountId);
-    if (ret != ERR_OK) {
-        return ret;
+    if (userId >= 0) {
+        activeAccountId = userId;
+    } else {
+        ErrCode ret = QueryOsAccount(activeAccountId);
+        if (ret != ERR_OK) {
+            return ret;
+        }
     }
-    ret = bms->GetBundleInfoV9(bundleName,
+    ErrCode ret = bms->GetBundleInfoV9(bundleName,
         static_cast<int32_t>(AppExecFwk::GetBundleInfoFlag::GET_BUNDLE_INFO_WITH_APPLICATION),
         bundleInfo, activeAccountId);
     if (ret != ERR_OK) {
@@ -519,9 +545,17 @@ int32_t BundleManagerInternal::GetApplicationInfoFromBms(const std::string& bund
     return ERR_OK;
 }
 
-ErrCode BundleManagerInternal::QueryOsAccount(int32_t& activeAccountId)
+ErrCode BundleManagerInternal::QueryOsAccount(int32_t& activeAccountId, int32_t uid)
 {
 #ifdef OS_ACCOUNT_PART
+    if (uid >= 0) {
+        ErrCode ret = AccountSA::OsAccountManager::GetOsAccountLocalIdFromUid(uid, activeAccountId);
+        if (ret != ERR_OK || activeAccountId < 0) {
+            HILOGE("GetOsAccountLocalIdFromUid failed, ret: %{public}d, uid: %{public}d", ret, uid);
+            return INVALID_PARAMETERS_ERR;
+        }
+        return ERR_OK;
+    }
     std::vector<int32_t> ids;
     ErrCode err = AccountSA::OsAccountManager::QueryActiveOsAccountIds(ids);
     if (err != ERR_OK || ids.empty()) {
@@ -529,6 +563,8 @@ ErrCode BundleManagerInternal::QueryOsAccount(int32_t& activeAccountId)
         return INVALID_PARAMETERS_ERR;
     }
     activeAccountId = ids[0];
+#else
+    (void)uid;
 #endif
     return ERR_OK;
 }

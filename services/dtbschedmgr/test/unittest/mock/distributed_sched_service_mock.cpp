@@ -30,11 +30,12 @@ int32_t DistributedSchedService::CheckTargetPermission(const OHOS::AAFwk::Want& 
 }
 
 int32_t DistributedSchedService::CheckCollabStartPermission(const OHOS::AAFwk::Want& want, const CallerInfo& callerInfo,
-    const AccountInfo& accountInfo, bool needQueryExtension)
+    const AccountInfo& accountInfo, bool needQueryExtension, int32_t userId)
 {
     if (IDistributedSchedService::dmsSrvMock == nullptr) {
         return 0;
     }
+    (void)userId;
     return IDistributedSchedService::dmsSrvMock->CheckCollabStartPermission(
         want, callerInfo, accountInfo, needQueryExtension);
 }

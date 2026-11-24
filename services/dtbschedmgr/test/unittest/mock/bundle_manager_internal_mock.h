@@ -25,20 +25,23 @@ class IBundleManagerInternal {
 public:
     virtual ~IBundleManagerInternal() = default;
     virtual bool GetCallerAppIdFromBms(int32_t callingUid, std::string& appId) = 0;
-    virtual bool GetCallerAppIdFromBms(const std::string& bundleName, std::string& appId);
+    virtual bool GetCallerAppIdFromBms(const std::string& bundleName, std::string& appId,
+        int32_t userId);
     virtual bool GetSpecifyBundleNameFromBms(int32_t callingUid, std::string& bundleName) = 0;
     virtual bool GetBundleNameListFromBms(int32_t callingUid, std::vector<std::string>& bundleNameList) = 0;
     virtual bool GetBundleNameListFromBms(int32_t callingUid, std::vector<std::u16string>& u16BundleNameList) = 0;
-    virtual bool QueryAbilityInfo(const AAFwk::Want& want, AppExecFwk::AbilityInfo& abilityInfo) = 0;
+    virtual bool QueryAbilityInfo(const AAFwk::Want& want, AppExecFwk::AbilityInfo& abilityInfo,
+        int32_t userId) = 0;
     virtual bool QueryExtensionAbilityInfo(const AAFwk::Want& want,
-        AppExecFwk::ExtensionAbilityInfo& extensionInfo) = 0;
+        AppExecFwk::ExtensionAbilityInfo& extensionInfo, int32_t userId) = 0;
     virtual void InitAbilityInfoFromExtension(const AppExecFwk::ExtensionAbilityInfo &extensionAbilityInfo,
         AppExecFwk::AbilityInfo &abilityInfo) = 0;
     virtual bool IsSameAppId(const std::string& callerAppId, const std::string& targetBundleName) = 0;
     virtual bool IsSameDeveloperId(const std::string &bundleNameInCurrentSide,
         const std::string &developerId4OtherSide) = 0;
     virtual int32_t GetLocalBundleInfo(const std::string& bundleName, AppExecFwk::BundleInfo &localBundleInfo) = 0;
-    virtual int32_t GetLocalBundleInfoV9(const std::string& bundleName, AppExecFwk::BundleInfo &bundleInfo) = 0;
+    virtual int32_t GetLocalBundleInfoV9(const std::string& bundleName, AppExecFwk::BundleInfo &bundleInfo,
+        int32_t userId) = 0;
     virtual int32_t GetLocalAbilityInfo(const std::string& bundleName,
         const std::string& moduleName, const std::string& abilityName, AppExecFwk::AbilityInfo &abilityInfo) = 0;
     virtual bool GetContinueBundle4Src(const std::string& srcBundleName,
@@ -60,7 +63,7 @@ public:
         const uint16_t& bundleNameId, std::string& bundleName) = 0;
     virtual int32_t GetApplicationInfoFromBms(const std::string& bundleName, const AppExecFwk::BundleFlag flag,
         const int32_t userId, AppExecFwk::ApplicationInfo &appInfo) = 0;
-    virtual ErrCode QueryOsAccount(int32_t& activeAccountId) = 0;
+    virtual ErrCode QueryOsAccount(int32_t& activeAccountId, int32_t uid) = 0;
 public:
     static inline std::shared_ptr<IBundleManagerInternal> bundleMgrMock = nullptr;
 };
@@ -68,20 +71,22 @@ public:
 class BundleManagerInternalMock : public IBundleManagerInternal {
 public:
     MOCK_METHOD2(GetCallerAppIdFromBms, bool(int32_t callingUid, std::string& appId));
-    MOCK_METHOD2(GetCallerAppIdFromBms, bool(const std::string& bundleName, std::string& appId));
+    MOCK_METHOD3(GetCallerAppIdFromBms, bool(const std::string& bundleName, std::string& appId, int32_t userId));
     MOCK_METHOD2(GetSpecifyBundleNameFromBms, bool(int32_t callingUid, std::string& bundleName));
     MOCK_METHOD2(GetBundleNameListFromBms, bool(int32_t callingUid, std::vector<std::string>& bundleNameList));
     MOCK_METHOD2(GetBundleNameListFromBms, bool(int32_t callingUid, std::vector<std::u16string>& u16BundleNameList));
-    MOCK_METHOD2(QueryAbilityInfo, bool(const AAFwk::Want& want, AppExecFwk::AbilityInfo& abilityInfo));
-    MOCK_METHOD2(QueryExtensionAbilityInfo, bool(const AAFwk::Want& want,
-        AppExecFwk::ExtensionAbilityInfo& extensionInfo));
+    MOCK_METHOD3(QueryAbilityInfo, bool(const AAFwk::Want& want, AppExecFwk::AbilityInfo& abilityInfo,
+        int32_t userId));
+    MOCK_METHOD3(QueryExtensionAbilityInfo, bool(const AAFwk::Want& want,
+        AppExecFwk::ExtensionAbilityInfo& extensionInfo, int32_t userId));
     MOCK_METHOD2(InitAbilityInfoFromExtension, void(const AppExecFwk::ExtensionAbilityInfo &extensionAbilityInfo,
         AppExecFwk::AbilityInfo &abilityInfo));
     MOCK_METHOD2(IsSameAppId, bool(const std::string& callerAppId, const std::string& targetBundleName));
     MOCK_METHOD2(IsSameDeveloperId, bool(const std::string &bundleNameInCurrentSide,
         const std::string &developerId4OtherSide));
     MOCK_METHOD2(GetLocalBundleInfo, int32_t(const std::string& bundleName, AppExecFwk::BundleInfo &localBundleInfo));
-    MOCK_METHOD2(GetLocalBundleInfoV9, int32_t(const std::string& bundleName, AppExecFwk::BundleInfo &bundleInfo));
+    MOCK_METHOD3(GetLocalBundleInfoV9, int32_t(const std::string& bundleName, AppExecFwk::BundleInfo &bundleInfo,
+        int32_t userId));
     MOCK_METHOD4(GetLocalAbilityInfo, int32_t(const std::string& bundleName,
         const std::string& moduleName, const std::string& abilityName, AppExecFwk::AbilityInfo &abilityInfo));
     MOCK_METHOD2(GetContinueBundle4Src, bool(const std::string& srcBundleName,
@@ -104,7 +109,7 @@ public:
         const uint16_t& bundleNameId, std::string& bundleName));
     MOCK_METHOD4(GetApplicationInfoFromBms, int32_t(const std::string& bundleName, const AppExecFwk::BundleFlag flag,
         const int32_t userId, AppExecFwk::ApplicationInfo &appInfo));
-    MOCK_METHOD1(QueryOsAccount, ErrCode(int32_t& activeAccountId));
+    MOCK_METHOD2(QueryOsAccount, ErrCode(int32_t& activeAccountId, int32_t uid));
 };
 }
 }
