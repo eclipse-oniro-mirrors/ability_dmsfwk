@@ -69,8 +69,7 @@ bool BundleManagerInternal::QueryAbilityInfo(const AAFwk::Want& want, AppExecFwk
     if (IBundleManagerInternal::bundleMgrMock == nullptr) {
         return false;
     }
-    (void)userId;
-    return IBundleManagerInternal::bundleMgrMock->QueryAbilityInfo(want, abilityInfo, -1);
+    return IBundleManagerInternal::bundleMgrMock->QueryAbilityInfo(want, abilityInfo, userId);
 }
 
 bool BundleManagerInternal::QueryExtensionAbilityInfo(const AAFwk::Want& want,
@@ -79,8 +78,7 @@ bool BundleManagerInternal::QueryExtensionAbilityInfo(const AAFwk::Want& want,
     if (IBundleManagerInternal::bundleMgrMock == nullptr) {
         return false;
     }
-    (void)userId;
-    return IBundleManagerInternal::bundleMgrMock->QueryExtensionAbilityInfo(want, extensionInfo, -1);
+    return IBundleManagerInternal::bundleMgrMock->QueryExtensionAbilityInfo(want, extensionInfo, userId);
 }
 
 void BundleManagerInternal::InitAbilityInfoFromExtension(const AppExecFwk::ExtensionAbilityInfo &extensionAbilityInfo,

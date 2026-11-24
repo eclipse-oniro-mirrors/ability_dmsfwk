@@ -39,6 +39,7 @@ constexpr const char* PERMISSIONMGR_ABILITY_NAME = "com.ohos.permissionmanager.G
 constexpr const char* EXTRO_INFO_JSON_KEY_ACCOUNT_ID = "accountId";
 constexpr const char* EXTRO_INFO_JSON_KEY_USERID_ID = "userId";
 constexpr const char* EXTRO_INFO_JSON_KEY_CALLER_INFO_EX = "callerInfo_ExtraInfoJson";
+constexpr const char* EXTRO_INFO_JSON_KEY_SRC_USER_ID = "srcUserId";
 constexpr const char* IS_CALLER_SYSAPP = "IsCallerSysApp";
 } // Constants
 } // DistributedSchedule

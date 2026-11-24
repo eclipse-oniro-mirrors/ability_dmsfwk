@@ -170,7 +170,7 @@ bool BundleManagerInternal::QueryAbilityInfo(const AAFwk::Want& want, AppExecFwk
     bool result = bundleMgr->QueryAbilityInfo(want, AppExecFwk::AbilityInfoFlag::GET_ABILITY_INFO_DEFAULT
         | AppExecFwk::AbilityInfoFlag::GET_ABILITY_INFO_WITH_PERMISSION, activeAccountId, abilityInfo);
     if (!result) {
-        HILOGW("QueryAbilityInfo failed");
+        HILOGW("QueryAbilityInfo failed, userId: %{public}d", activeAccountId);
         return false;
     }
     return true;
@@ -197,7 +197,7 @@ bool BundleManagerInternal::QueryExtensionAbilityInfo(const AAFwk::Want& want,
     bundleMgr->QueryExtensionAbilityInfos(want, AppExecFwk::AbilityInfoFlag::GET_ABILITY_INFO_DEFAULT
         | AppExecFwk::AbilityInfoFlag::GET_ABILITY_INFO_WITH_PERMISSION, activeAccountId, extensionInfos);
     if (extensionInfos.empty()) {
-        HILOGE("QueryExtensionAbilityInfo failed.");
+        HILOGE("QueryExtensionAbilityInfo failed, userId: %{public}d.", activeAccountId);
         return false;
     }
     extensionInfo = extensionInfos.front();

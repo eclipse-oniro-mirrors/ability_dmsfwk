@@ -38,6 +38,7 @@
 #include "dms_callback_task.h"
 #include "dsched_collaborate_callback_mgr.h"
 #include "idms_interactive_adapter.h"
+#include "want.h"
 #ifdef DMSFWK_INTERACTIVE_ADAPTER
 #include "softbus_adapter/softbus_adapter.h"
 #endif
@@ -228,12 +229,13 @@ public:
     int32_t SendIntentResult(const OHOS::AAFwk::Want& want,
         const IntentCallerInfo& callerInfo, const std::string& msg) override;
     int32_t CheckTargetPermission(const OHOS::AAFwk::Want& want, const CallerInfo& callerInfo,
-        const AccountInfo& accountInfo, int32_t flag, bool needQueryExtension);
+        const AccountInfo& accountInfo, int32_t flag, bool needQueryExtension, int32_t userId = -1);
     int32_t CheckTargetPermission4DiffBundle(const OHOS::AAFwk::Want& want, const CallerInfo& callerInfo,
-        const AccountInfo& accountInfo, int32_t flag, bool needQueryExtension);
+        const AccountInfo& accountInfo, int32_t flag, bool needQueryExtension, int32_t userId = -1);
     int32_t CheckCollabStartPermission(const OHOS::AAFwk::Want& want, const CallerInfo& callerInfo,
         const AccountInfo& accountInfo, bool needQueryExtension, int32_t userId = -1);
     ErrCode QueryOsAccount(int32_t& activeAccountId);
+    ErrCode FillTargetElementFromMissionId(OHOS::AAFwk::Want& want) const;
     void RegisterDataShareObserver(const std::string& key);
     int32_t ContinueStateCallbackRegister(int32_t missionId, std::string bundleName, std::string moduleName,
         std::string abilityName, sptr<IRemoteObject> callback);
@@ -270,6 +272,16 @@ private:
     void InitCommonEventListener();
     int32_t GetCallerInfo(const std::string &localDeviceId, int32_t callerUid, uint32_t accessToken,
         CallerInfo &callerInfo);
+    struct RemoteCallerContext {
+        std::string localDeviceId;
+        std::string deviceId;
+        OHOS::AAFwk::Want want;
+        CallerInfo callerInfo;
+        AccountInfo accountInfo;
+        sptr<IDistributedSched> remoteDms;
+    };
+    int32_t PrepareRemoteCallerContext(int32_t callerUid, uint32_t accessToken,
+        uint32_t specifyTokenId, RemoteCallerContext& context);
     std::string GetBundleNameFromConnectAbilityMap(const sptr<IRemoteObject>& connect);
     void RemoteConnectAbilityMappingLocked(const sptr<IRemoteObject>& connect, const std::string& localDeviceId,
         const std::string& remoteDeviceId, const AppExecFwk::ElementName& element, const CallerInfo& callerInfo,

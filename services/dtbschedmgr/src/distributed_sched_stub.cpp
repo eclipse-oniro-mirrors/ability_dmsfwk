@@ -482,6 +482,25 @@ int32_t DistributedSchedStub::StopAbilityFromRemoteInner(MessageParcel& data, Me
     PARCEL_WRITE_REPLY_NOERROR(reply, Int32, result);
 }
 
+static bool GetValidatedSrcUserId(const nlohmann::json& json, int32_t& userId)
+{
+    constexpr int32_t MAX_LOCAL_USER_ID = 999;
+    if (json.is_discarded() || !json.is_object()) {
+        return false;
+    }
+    auto it = json.find(Constants::EXTRO_INFO_JSON_KEY_SRC_USER_ID);
+    if (it == json.end() || !it->is_number_integer()) {
+        return false;
+    }
+    int64_t value = it->get<int64_t>();
+    if (value < 0 || value > MAX_LOCAL_USER_ID) {
+        HILOGW("invalid srcUserId: %{public}" PRId64 ", dropped", value);
+        return false;
+    }
+    userId = static_cast<int32_t>(value);
+    return true;
+}
+
 void DistributedSchedStub::SaveExtraInfo(const nlohmann::json& extraInfoJson, CallerInfo& callerInfo,
     AccountInfo& accountInfo)
 {
@@ -511,6 +530,7 @@ void DistributedSchedStub::SaveExtraInfo(const nlohmann::json& extraInfoJson, Ca
         extraInfoJson[Constants::EXTRO_INFO_JSON_KEY_USERID_ID].is_number()) {
         accountInfo.userId = extraInfoJson[Constants::EXTRO_INFO_JSON_KEY_USERID_ID];
     }
+    GetValidatedSrcUserId(extraInfoJson, callerInfo.srcUserId);
     if (extraInfoJson.find(IS_CALLER_SYSAPP) != extraInfoJson.end() && extraInfoJson[IS_CALLER_SYSAPP].is_boolean()) {
         callerInfo.extraInfoJson[IS_CALLER_SYSAPP] = extraInfoJson[IS_CALLER_SYSAPP];
     }
@@ -537,6 +557,7 @@ void DistributedSchedStub::SaveSendResultExtraInfo(const nlohmann::json& extraIn
         }
         callerInfo.extraInfoJson = nlohmann::json::parse(callerExJsonStr, nullptr, false);
     }
+    GetValidatedSrcUserId(callerInfo.extraInfoJson, callerInfo.srcUserId);
     HILOGD("save dms version");
 }
 

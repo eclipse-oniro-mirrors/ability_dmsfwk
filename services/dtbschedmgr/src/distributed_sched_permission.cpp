@@ -645,7 +645,7 @@ bool DistributedSchedPermission::GetTargetAbility(const AAFwk::Want& want,
         return true;
     }
     if (needQueryExtension) {
-        HILOGI("QueryAbilityInfo failed, try to QueryExtensionAbilityInfo");
+        HILOGI("QueryAbilityInfo failed, try to QueryExtensionAbilityInfo, userId: %{public}d", userId);
         // try to find extension
         AppExecFwk::ExtensionAbilityInfo extensionAbility;
         if (BundleManagerInternal::QueryExtensionAbilityInfo(want, extensionAbility, userId)) {
@@ -654,8 +654,8 @@ bool DistributedSchedPermission::GetTargetAbility(const AAFwk::Want& want,
             return true;
         }
     }
-    HILOGE("QueryAbilityInfo failed, want bundle name=%{public}s, ability name=%{public}s.",
-        want.GetElement().GetBundleName().c_str(), want.GetElement().GetAbilityName().c_str());
+    HILOGE("QueryAbilityInfo failed, want bundle name=%{public}s, ability name=%{public}s, userId=%{public}d.",
+        want.GetElement().GetBundleName().c_str(), want.GetElement().GetAbilityName().c_str(), userId);
     return false;
 }
 

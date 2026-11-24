@@ -95,6 +95,8 @@ int32_t DistributedSchedProxy::StartAbilityFromRemote(const OHOS::AAFwk::Want& w
     extraInfoJson[EXTRO_INFO_JSON_KEY_ACCESS_TOKEN] = callerInfo.accessToken;
     extraInfoJson[Constants::EXTRO_INFO_JSON_KEY_ACCOUNT_ID] = accountInfo.activeAccountId;
     extraInfoJson[Constants::EXTRO_INFO_JSON_KEY_USERID_ID] = accountInfo.userId;
+    extraInfoJson[Constants::EXTRO_INFO_JSON_KEY_SRC_USER_ID] =
+        (callerInfo.srcUserId >= 0) ? callerInfo.srcUserId : accountInfo.userId;
     if (callerInfo.extraInfoJson.find(DMS_VERSION_ID) != callerInfo.extraInfoJson.end()) {
         extraInfoJson[DMS_VERSION_ID] = callerInfo.extraInfoJson[DMS_VERSION_ID];
     }
@@ -861,6 +863,8 @@ int32_t DistributedSchedProxy::StartAbilityByCallFromRemote(const OHOS::AAFwk::W
     extraInfoJson[EXTRO_INFO_JSON_KEY_ACCESS_TOKEN] = callerInfo.accessToken;
     extraInfoJson[Constants::EXTRO_INFO_JSON_KEY_ACCOUNT_ID] = accountInfo.activeAccountId;
     extraInfoJson[Constants::EXTRO_INFO_JSON_KEY_USERID_ID] = accountInfo.userId;
+    extraInfoJson[Constants::EXTRO_INFO_JSON_KEY_SRC_USER_ID] =
+        (callerInfo.srcUserId >= 0) ? callerInfo.srcUserId : accountInfo.userId;
     if (callerInfo.extraInfoJson.find(DMS_VERSION_ID) != callerInfo.extraInfoJson.end()) {
         extraInfoJson[DMS_VERSION_ID] = callerInfo.extraInfoJson[DMS_VERSION_ID];
     }
@@ -971,6 +975,8 @@ int32_t DistributedSchedProxy::StartFreeInstallFromRemote(const FreeInstallInfo&
     extraInfoJson[EXTRO_INFO_JSON_KEY_REQUEST_CODE] = info.requestCode;
     extraInfoJson[Constants::EXTRO_INFO_JSON_KEY_ACCOUNT_ID] = info.accountInfo.activeAccountId;
     extraInfoJson[Constants::EXTRO_INFO_JSON_KEY_USERID_ID] = info.accountInfo.userId;
+    extraInfoJson[Constants::EXTRO_INFO_JSON_KEY_SRC_USER_ID] =
+        (info.callerInfo.srcUserId >= 0) ? info.callerInfo.srcUserId : info.accountInfo.userId;
     if (info.callerInfo.extraInfoJson.find(DMS_VERSION_ID) != info.callerInfo.extraInfoJson.end()) {
         extraInfoJson[DMS_VERSION_ID] = info.callerInfo.extraInfoJson[DMS_VERSION_ID];
     }
