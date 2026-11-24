@@ -124,6 +124,36 @@ ohos_unittest("ChannelManagerDataSenderReceiverTest") {
   subsystem_name = "ability"
 }
 
+ohos_unittest("ChannelManagerAVTransDataBufferTest") {
+  visibility = [ ":*" ]
+
+  module_out_path = module_output_path
+
+  configs = [
+    ":test_config",
+    "${distributed_service}/dtbschedmgr/test/resource:coverage_flags",
+  ]
+
+  include_dirs = [ "${dms_path}/services/dtbcollabmgr/test/unittest" ]
+
+  cflags = [ "-Dprivate=public" ]
+  sources = [ "av_trans_data_buffer_test.cpp" ]
+
+  deps = [
+    "${dms_path}/common:distributed_sched_utils",
+    "${dms_path}/services/dtbcollabmgr/src/channel_manager:dtbcollab_channel_manager",
+  ]
+
+  external_deps = [
+    "cJSON:cjson",
+    "c_utils:utils",
+    "hilog:libhilog",
+  ]
+
+  part_name = "dmsfwk"
+  subsystem_name = "ability"
+}
+
 ohos_unittest("ChannelManagerTest") {
   sanitize = {
     cfi = true
@@ -174,6 +204,7 @@ group("unittest") {
   testonly = true
   if (!dmsfwk_disable_distributedsched_service) {
     deps = [
+      ":ChannelManagerAVTransDataBufferTest",
       ":ChannelManagerAVTransStreamDataTest",
       ":ChannelManagerDataSenderReceiverTest",
       ":ChannelManagerSessionDataHeaderTest",
