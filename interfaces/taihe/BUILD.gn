@@ -45,6 +45,7 @@ copy_taihe_idl("copy_dmsfwk") {
 ohos_taihe("run_dmsfwk_taihe") {
   taihe_generated_file_path = "$taihe_generated_file_path"
   deps = [ ":copy_dmsfwk" ]
+  use_ats = true
   outputs = [
     "$taihe_generated_file_path/src/ohos.distributedsched.abilityConnectionManager.ani.cpp",
     "$taihe_generated_file_path/src/ohos.distributedsched.abilityConnectionManager.abi.c",
@@ -110,7 +111,7 @@ taihe_shared_library("dmsfwk_taihe_native") {
 
 generate_static_abc("dmsfwk_taihe_ani") {
   base_url = "$taihe_generated_file_path"
-  files = [ "$taihe_generated_file_path/@ohos.distributedsched.abilityConnectionManager.ets" ]
+  files = [ "$taihe_generated_file_path/@ohos.distributedsched.abilityConnectionManager.ats" ]
   is_boot_abc = "True"
   device_dst_file = "/system/framework/dmsfwk_taihe_ani.abc"
   dependencies = [ ":run_dmsfwk_taihe" ]
