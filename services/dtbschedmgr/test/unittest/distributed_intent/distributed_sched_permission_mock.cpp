@@ -39,6 +39,12 @@ bool DistributedSchedPermission::GetTargetAbility(const AAFwk::Want& want,
     return IDistributedSchedPermission::schedPermMock->GetTargetAbility(want, targetAbility, needQueryExtension);
 }
 
+bool DistributedSchedPermission::GetTargetAbility(const AAFwk::Want& want,
+    AppExecFwk::AbilityInfo& targetAbility, bool needQueryExtension, int32_t userId) const
+{
+    return GetTargetAbility(want, targetAbility, needQueryExtension);
+}
+
 bool DistributedSchedPermission::CheckDeviceSecurityLevel(const std::string& srcDeviceId,
     const std::string& dstDeviceId) const
 {

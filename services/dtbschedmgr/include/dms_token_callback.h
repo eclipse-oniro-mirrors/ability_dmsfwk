@@ -28,7 +28,8 @@ public:
 
     DmsTokenCallback() = default;
     ~DmsTokenCallback() = default;
-    DmsTokenCallback(std::string bundleName) : bundleName_(bundleName) {};
+    explicit DmsTokenCallback(std::string bundleName, int32_t srcUserId = -1)
+        : bundleName_(bundleName), srcUserId_(srcUserId) {};
     int32_t SendResult(OHOS::AAFwk::Want& want, int32_t callerUid, int32_t requestCode,
         uint32_t accessToken, int32_t resultCode) override;
 
@@ -38,6 +39,7 @@ private:
     sptr<IDistributedSched> GetRemoteDms(const std::string& remoteDeviceId);
     int32_t GetAccountInfoWrapper(const std::string& deviceId, CallerInfo& callerInfo, AccountInfo& accountInfo);
     std::string bundleName_;
+    int32_t srcUserId_ = -1;
 };
 } // namespace Distributedschedule
 } // namespace OHOS

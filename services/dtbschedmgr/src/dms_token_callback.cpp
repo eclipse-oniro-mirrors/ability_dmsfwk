@@ -73,9 +73,8 @@ int32_t DmsTokenCallback::SendResult(OHOS::AAFwk::Want& want, int32_t callerUid,
         HILOGE("get remoteDms failed");
         return INVALID_PARAMETERS_ERR;
     }
-    nlohmann::json extraInfoJson;
     CallerInfo callerInfo = {.uid = callerUid, .sourceDeviceId = localDeviceId, .accessToken = accessToken,
-        .extraInfoJson = extraInfoJson};
+        .extraInfoJson = {{Constants::EXTRO_INFO_JSON_KEY_SRC_USER_ID, srcUserId_}}};
     AccountInfo accountInfo;
     ret = GetAccountInfoWrapper(deviceId, callerInfo, accountInfo);
     if (ret != ERR_OK) {

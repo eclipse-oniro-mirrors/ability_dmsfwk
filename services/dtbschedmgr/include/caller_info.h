@@ -40,6 +40,7 @@ struct CallerInfo {
     int32_t dmsVersion = -1;
     uint32_t accessToken = 0;
     nlohmann::json extraInfoJson;
+    int32_t srcUserId = -1;
 };
 } // namespace DistributedSchedule
 } // namespace OHOS

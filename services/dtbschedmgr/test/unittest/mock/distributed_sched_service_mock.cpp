@@ -20,11 +20,12 @@ using namespace OHOS::DistributedSchedule;
 
 int32_t DistributedSchedService::CheckTargetPermission(const OHOS::AAFwk::Want& want,
     const CallerInfo& callerInfo, const IDistributedSched::AccountInfo& accountInfo, int32_t flag,
-    bool needQueryExtension)
+    bool needQueryExtension, int32_t userId)
 {
     if (IDistributedSchedService::dmsSrvMock == nullptr) {
         return 0;
     }
+    (void)userId;
     return IDistributedSchedService::dmsSrvMock->CheckTargetPermission(
         want, callerInfo, accountInfo, flag, needQueryExtension);
 }

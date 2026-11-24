@@ -127,6 +127,7 @@ const std::string DMS_VERSION_ID = "dmsVersion";
 const std::string DMS_UID_SPEC_BUNDLE_NAME = "dmsCallerUidBundleName";
 const std::string DMS_CONNECT_TOKEN = "connectToken";
 const std::string DMS_MISSION_ID = "dmsMissionId";
+const std::string DMS_USER_ID_PARAM = "ohos.dms.srcUserId";
 const std::string SUPPORT_CONTINUE_PAGE_STACK_KEY = "ohos.extra.param.key.supportContinuePageStack";
 const std::string SUPPORT_CONTINUE_SOURCE_EXIT_KEY = "ohos.extra.param.key.supportContinueSourceExit";
 const std::string SUPPORT_CONTINUE_MODULE_NAME_UPDATE_KEY = "ohos.extra.param.key.supportContinueModuleNameUpdate";
@@ -1379,6 +1380,33 @@ int32_t DistributedSchedService::GetCallerInfo(const std::string &localDeviceId,
     return ERR_OK;
 }
 
+int32_t DistributedSchedService::PrepareRemoteCallerContext(int32_t callerUid,
+    uint32_t accessToken, uint32_t specifyTokenId, RemoteCallerContext& context)
+{
+    context.remoteDms = GetRemoteDms(context.deviceId);
+    if (context.remoteDms == nullptr) {
+        return INVALID_PARAMETERS_ERR;
+    }
+    SetCallerExtraInfo(context.callerInfo, accessToken, specifyTokenId);
+    int32_t ret = GetCallerInfo(context.localDeviceId, callerUid, accessToken, context.callerInfo);
+    if (ret != ERR_OK) {
+        return ret;
+    }
+    ret = DistributedSchedPermission::GetInstance().GetAccountInfo(context.deviceId,
+        context.callerInfo, context.accountInfo);
+    if (ret != ERR_OK) {
+        return ret;
+    }
+    context.callerInfo.srcUserId = context.accountInfo.userId;
+    if (BundleManagerInternal::QueryOsAccount(context.callerInfo.srcUserId, callerUid) != ERR_OK) {
+        HILOGW("resolve source user by uid failed, uid: %{public}d", callerUid);
+        context.callerInfo.srcUserId = context.accountInfo.userId;
+    }
+    context.want.SetParam(DMS_SRC_NETWORK_ID, context.localDeviceId);
+    context.want.SetParam(DMS_SRC_BUNDLE_NAMES, context.callerInfo.bundleNames);
+    return ERR_OK;
+}
+
 int32_t DistributedSchedService::StartRemoteAbility(const OHOS::AAFwk::Want& want,
     int32_t callerUid, int32_t requestCode, uint32_t accessToken, uint32_t specifyTokenId)
 {
@@ -1398,31 +1426,22 @@ int32_t DistributedSchedService::StartRemoteAbility(const OHOS::AAFwk::Want& wan
         return StartRemoteAbilityAdapter(want, callerUid, requestCode, accessToken);
     }
 #endif // DMSFWK_INTERACTIVE_ADAPTER
-    sptr<IDistributedSched> remoteDms = GetRemoteDms(deviceId);
-    if (remoteDms == nullptr) {
-        return INVALID_PARAMETERS_ERR;
-    }
-    CallerInfo callerInfo;
-    SetCallerExtraInfo(callerInfo, accessToken, specifyTokenId);
-    int32_t ret = GetCallerInfo(localDeviceId, callerUid, accessToken, callerInfo);
+    RemoteCallerContext context;
+    context.localDeviceId = localDeviceId;
+    context.deviceId = deviceId;
+    context.want = want;
+    int32_t ret = PrepareRemoteCallerContext(callerUid, accessToken, specifyTokenId, context);
     if (ret != ERR_OK) {
         return ret;
     }
-    AccountInfo accountInfo;
-    ret = DistributedSchedPermission::GetInstance().GetAccountInfo(deviceId, callerInfo, accountInfo);
-    if (ret != ERR_OK) {
-        return ret;
-    }
-    AAFwk::Want* newWant = const_cast<Want*>(&want);
-    newWant->SetParam(DMS_SRC_NETWORK_ID, localDeviceId);
-    newWant->SetParam(DMS_SRC_BUNDLE_NAMES, callerInfo.bundleNames);
     AppExecFwk::AbilityInfo abilityInfo;
     HILOGI("[PerformanceTest] StartRemoteAbility transact begin");
     if (!DmsContinueTime::GetInstance().GetPull()) {
         int64_t begin = GetTickCount();
         DmsContinueTime::GetInstance().SetDurationBegin(DMSDURATION_SRCTODSTRPCTIME, begin);
     }
-    int32_t result = remoteDms->StartAbilityFromRemote(*newWant, abilityInfo, requestCode, callerInfo, accountInfo);
+    int32_t result = context.remoteDms->StartAbilityFromRemote(context.want, abilityInfo,
+        requestCode, context.callerInfo, context.accountInfo);
     if (!DmsContinueTime::GetInstance().GetPull()) {
         int64_t end = GetTickCount();
         DmsContinueTime::GetInstance().SetDurationBegin(DMSDURATION_STARTABILITY, end);
@@ -1528,6 +1547,29 @@ bool DistributedSchedService::IsTargetPermission(const OHOS::AAFwk::Want &want)
     return false;
 }
 
+ErrCode DistributedSchedService::FillTargetElementFromMissionId(OHOS::AAFwk::Want& want) const
+{
+    HILOGW("Remote died abnormal");
+    int32_t missionId = want.GetIntParam(DMS_MISSION_ID, DEFAULT_DMS_MISSION_ID);
+    ErrCode ret = AAFwk::AbilityManagerClient::GetInstance()->Connect();
+    if (ret != ERR_OK) {
+        HILOGE("connect ability server failed %{public}d", ret);
+        return ret;
+    }
+    MissionInfo missionInfo;
+    ret = AAFwk::AbilityManagerClient::GetInstance()->GetMissionInfo("", missionId, missionInfo);
+    if (ret != ERR_OK) {
+        HILOGE("SendResult failed %{public}d", ret);
+        return ret;
+    }
+    std::string bundleName = missionInfo.want.GetElement().GetBundleName();
+    std::string abilityName = missionInfo.want.GetElement().GetAbilityName();
+    HILOGD("bundlename: %{public}s, ability is %{public}s", bundleName.c_str(), abilityName.c_str());
+    ElementName element{"", bundleName, abilityName};
+    want.SetElement(element);
+    return ERR_OK;
+}
+
 int32_t DistributedSchedService::SendResultFromRemote(OHOS::AAFwk::Want& want, int32_t requestCode,
     const CallerInfo& callerInfo, const AccountInfo& accountInfo, int32_t resultCode)
 {
@@ -1540,26 +1582,14 @@ int32_t DistributedSchedService::SendResultFromRemote(OHOS::AAFwk::Want& want, i
         return INVALID_REMOTE_PARAMETERS_ERR;
     }
     if (want.GetElement().GetBundleName().empty() && want.GetElement().GetAbilityName().empty()) {
-        HILOGW("Remote died abnormal");
-        int32_t missionId = want.GetIntParam(DMS_MISSION_ID, DEFAULT_DMS_MISSION_ID);
-        ErrCode ret = AAFwk::AbilityManagerClient::GetInstance()->Connect();
-        if (ret != ERR_OK) {
-            HILOGE("connect ability server failed %{public}d", ret);
-            return ret;
+        ErrCode fillRet = FillTargetElementFromMissionId(want);
+        if (fillRet != ERR_OK) {
+            return fillRet;
         }
-        MissionInfo missionInfo;
-        ret = AAFwk::AbilityManagerClient::GetInstance()->GetMissionInfo("", missionId, missionInfo);
-        if (ret != ERR_OK) {
-            HILOGE("SendResult failed %{public}d", ret);
-            return ret;
-        }
-        std::string bundleName = missionInfo.want.GetElement().GetBundleName();
-        std::string abilityName = missionInfo.want.GetElement().GetAbilityName();
-        HILOGD("bundlename: %{public}s, ability is %{public}s", bundleName.c_str(), abilityName.c_str());
-        ElementName element{"", bundleName, abilityName};
-        want.SetElement(element);
     }
-    int32_t result = CheckTargetPermission(want, callerInfo, accountInfo, SEND_RESULT_PERMISSION, false);
+    int32_t targetUserId = callerInfo.srcUserId;
+    int32_t result = CheckTargetPermission(want, callerInfo, accountInfo, SEND_RESULT_PERMISSION, false,
+        targetUserId);
     if (result != ERR_OK) {
         HILOGE("CheckTargetPermission failed!!");
         return result;
@@ -1569,7 +1599,17 @@ int32_t DistributedSchedService::SendResultFromRemote(OHOS::AAFwk::Want& want, i
         HILOGE("connect ability server failed %{public}d", err);
         return err;
     }
+    int32_t foregroundUserId = -1;
+    if (DmsUserAndAccountUtil::GetForegroundUserId(foregroundUserId) != ERR_OK) {
+        foregroundUserId = -1;
+    }
+    if (targetUserId >= 0 && targetUserId != foregroundUserId) {
+        want.SetParam(DMS_USER_ID_PARAM, targetUserId);
+        HILOGI("send result to userId: %{public}d, foreground userId: %{public}d",
+            targetUserId, foregroundUserId);
+    }
     err = AAFwk::AbilityManagerClient::GetInstance()->SendResultToAbility(requestCode, resultCode, want);
+    want.RemoveParam(DMS_USER_ID_PARAM);
     if (err != ERR_OK) {
         HILOGE("SendResult failed %{public}d", err);
     }
@@ -4169,7 +4209,7 @@ int32_t DistributedSchedService::StartAbility(const OHOS::AAFwk::Want& want, int
     if (want.GetBoolParam(Want::PARAM_RESV_FOR_RESULT, false)) {
         HILOGI("StartAbilityForResult start, flag is %{public}d", want.GetFlags());
         auto bundleName = want.GetElement().GetBundleName();
-        sptr<IRemoteObject> dmsTokenCallback(new DmsTokenCallback(bundleName));
+        sptr<IRemoteObject> dmsTokenCallback(new DmsTokenCallback(bundleName, callerInfo.srcUserId));
         err = AAFwk::AbilityManagerClient::GetInstance()->StartAbility(want, dmsTokenCallback, requestCode,
             activeAccountId, dAccessToken);
     } else {
@@ -4442,13 +4482,15 @@ int32_t DistributedSchedService::NotifyStateChangedFromRemote(int32_t abilitySta
 
 int32_t DistributedSchedService::CheckTargetPermission(const OHOS::AAFwk::Want& want,
     const CallerInfo& callerInfo, const AccountInfo& accountInfo, int32_t flag,
-    bool needQueryExtension)
+    bool needQueryExtension, int32_t userId)
 {
     DistributedSchedPermission& permissionInstance = DistributedSchedPermission::GetInstance();
     AppExecFwk::AbilityInfo targetAbility;
-    bool result = permissionInstance.GetTargetAbility(want, targetAbility, needQueryExtension);
+    bool result = (userId >= 0) ?
+        permissionInstance.GetTargetAbility(want, targetAbility, needQueryExtension, userId) :
+        permissionInstance.GetTargetAbility(want, targetAbility, needQueryExtension);
     if (!result) {
-        HILOGE("GetTargetAbility can not find the target ability");
+        HILOGE("GetTargetAbility can not find the target ability, userId: %{public}d", userId);
         return INVALID_PARAMETERS_ERR;
     }
     HILOGD("target ability info bundleName:%{public}s abilityName:%{public}s visible:%{public}d",
@@ -4477,13 +4519,15 @@ int32_t DistributedSchedService::CheckTargetPermission(const OHOS::AAFwk::Want& 
 
 int32_t DistributedSchedService::CheckTargetPermission4DiffBundle(const OHOS::AAFwk::Want& want,
     const CallerInfo& callerInfo, const AccountInfo& accountInfo, int32_t flag,
-    bool needQueryExtension)
+    bool needQueryExtension, int32_t userId)
 {
     DistributedSchedPermission& permissionInstance = DistributedSchedPermission::GetInstance();
     AppExecFwk::AbilityInfo targetAbility;
-    bool result = permissionInstance.GetTargetAbility(want, targetAbility, needQueryExtension);
+    bool result = (userId >= 0) ?
+        permissionInstance.GetTargetAbility(want, targetAbility, needQueryExtension, userId) :
+        permissionInstance.GetTargetAbility(want, targetAbility, needQueryExtension);
     if (!result) {
-        HILOGE("GetTargetAbility can not find the target ability");
+        HILOGE("GetTargetAbility can not find the target ability, userId: %{public}d", userId);
         return INVALID_PARAMETERS_ERR;
     }
     HILOGD("target ability info bundleName:%{public}s abilityName:%{public}s visible:%{public}d",
