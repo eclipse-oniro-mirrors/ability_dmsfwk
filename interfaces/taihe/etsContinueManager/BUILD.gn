@@ -37,6 +37,7 @@ copy_taihe_idl("copy_continueManager") {
 ohos_taihe("run_continueManager_taihe") {
   taihe_generated_file_path = "$taihe_generated_file_path"
   deps = [ ":copy_continueManager" ]
+  use_ats = true
   outputs = [
     "$taihe_generated_file_path/src/ohos.app.ability.continueManager.ani.cpp",
     "$taihe_generated_file_path/src/ohos.app.ability.continueManager.abi.c",
@@ -106,7 +107,7 @@ taihe_shared_library("continueManager_ani") {
 
 generate_static_abc("continueManager_taihe_abc") {
   base_url = "$taihe_generated_file_path"
-  files = [ "$taihe_generated_file_path/@ohos.app.ability.continueManager.ets" ]
+  files = [ "$taihe_generated_file_path/@ohos.app.ability.continueManager.ats" ]
   is_boot_abc = "True"
   device_dst_file = "/system/framework/continueManager_taihe_abc.abc"
   dependencies = [ ":run_continueManager_taihe" ]
