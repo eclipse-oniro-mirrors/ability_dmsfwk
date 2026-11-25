@@ -799,6 +799,14 @@ int32_t BundleManagerInternal::GetLocalBundleInfo(const std::string& bundleName,
         localBundleInfo.applicationInfo.isSystemApp = false;
         localBundleInfo.applicationInfo.enabled = true;
         localBundleInfo.abilityInfos.clear();
+        // Provide a continuable ability so IsBundleContinuable can match the source ability
+        // (abilityName01/module01/continueType01) used by ValidateAndPrepareBundleInfo_002.
+        AppExecFwk::AbilityInfo stubAbilityInfo;
+        stubAbilityInfo.name = "abilityName01";
+        stubAbilityInfo.moduleName = "module01";
+        stubAbilityInfo.continuable = true;
+        stubAbilityInfo.continueType = {"continueType01"};
+        localBundleInfo.abilityInfos.push_back(stubAbilityInfo);
         // Ensure bundleType is set to APP (0)
         if (localBundleInfo.applicationInfo.bundleType != AppExecFwk::BundleType::APP) {
             localBundleInfo.applicationInfo.bundleType = AppExecFwk::BundleType::APP;
@@ -1072,6 +1080,11 @@ HWTEST_F(DMSContinueManagerTest, ValidateAndPrepareBundleInfo_002, TestSize.Leve
     DmsBundleInfo distributedBundleInfo;
     distributedBundleInfo.bundleName = BUNDLENAME_01;
     distributedBundleInfo.appIdentifier = "testAppId";
+    DmsAbilityInfo dmsAbilityInfo;
+    dmsAbilityInfo.abilityName = ABILITY_NAME_01;
+    dmsAbilityInfo.moduleName = "module01";
+    dmsAbilityInfo.continueType = {"continueType01"};
+    distributedBundleInfo.dmsAbilityInfos.push_back(dmsAbilityInfo);
     uint8_t continueTypeId = 0;
     int32_t state = ACTIVE;
 
