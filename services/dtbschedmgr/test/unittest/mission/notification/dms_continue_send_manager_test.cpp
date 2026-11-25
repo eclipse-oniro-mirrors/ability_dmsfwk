@@ -650,16 +650,24 @@ HWTEST_F(DMSContinueSendMgrTest, ExecuteSendStrategyBackground_001, TestSize.Lev
     sendMgr->strategyMap_[MISSION_EVENT_BACKGROUND] = strategy;
     sendMgr->screenLockedHandler_ = std::make_shared<DMSContinueSendMgr::ScreenLockedHandler>(sendMgr);
 
-    testing::Sequence seq;
-    EXPECT_CALL(*mgrMock_, IsScreenLocked()).InSequence(seq).WillOnce(Return(false));
+    // Screen lock state is driven through both channels: the real singleton field (covers the
+    // ThinLTO-inlined call site inside libdistributedschedsvr.z.so, which bypasses the mock) and
+    // the gmock default (covers the symbol-interposed call site). EXPECT_CALL is deliberately
+    // not used: an inlined call site never reaches the mock and would leave it unsatisfied.
+    DmsContinueConditionMgr::GetInstance().SetIsScreenLocked(false);
+    ON_CALL(*mgrMock_, IsScreenLocked()).WillByDefault(Return(false));
     int32_t ret = sendMgr->ExecuteSendStrategy(MISSION_EVENT_BACKGROUND, status, sendType);
     EXPECT_EQ(ret, ERR_OK);
     EXPECT_EQ(sendType, BROADCAST_TYPE_DISAPPEAR);
 
-    EXPECT_CALL(*mgrMock_, IsScreenLocked()).InSequence(seq).WillOnce(Return(true));
+    DmsContinueConditionMgr::GetInstance().SetIsScreenLocked(true);
+    ON_CALL(*mgrMock_, IsScreenLocked()).WillByDefault(Return(true));
     ret = sendMgr->ExecuteSendStrategy(MISSION_EVENT_BACKGROUND, status, sendType);
     EXPECT_EQ(ret, DMS_PERMISSION_DENIED);
     EXPECT_EQ(sendType, BROADCAST_TYPE_DISAPPEAR);
+
+    DmsContinueConditionMgr::GetInstance().SetIsScreenLocked(false);
+    ON_CALL(*mgrMock_, IsScreenLocked()).WillByDefault(Return(false));
     DTEST_LOG << "DMSContinueSendMgrTest ExecuteSendStrategyBackground_001 end" << std::endl;
 }
 
@@ -1071,11 +1079,16 @@ HWTEST_F(DMSContinueSendMgrTest, SendStrategyBackground_IsScreenLocked_001, Test
     uint8_t sendType = 0;
 
     auto strategy = std::make_shared<SendStrategyBackground>(sendMgr);
+    // Lock state via the real singleton field (ThinLTO-inlined call site) plus gmock default
+    // (symbol-interposed call site); see ExecuteSendStrategyBackground_001 for details.
+    DmsContinueConditionMgr::GetInstance().SetIsScreenLocked(true);
     ON_CALL(*mgrMock_, IsScreenLocked()).WillByDefault(Return(true));
-    EXPECT_CALL(*mgrMock_, IsScreenLocked()).WillOnce(Return(true));
     int32_t ret = strategy->ExecuteSendStrategy(status, sendType);
     EXPECT_EQ(ret, DMS_PERMISSION_DENIED);
     EXPECT_EQ(sendType, BROADCAST_TYPE_DISAPPEAR);
+
+    DmsContinueConditionMgr::GetInstance().SetIsScreenLocked(false);
+    ON_CALL(*mgrMock_, IsScreenLocked()).WillByDefault(Return(false));
     DTEST_LOG << "DMSContinueSendMgrTest SendStrategyBackground_IsScreenLocked_001 end" << std::endl;
 }
 

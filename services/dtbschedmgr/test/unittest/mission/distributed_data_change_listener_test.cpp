@@ -17,6 +17,8 @@
 
 #include "change_notification.h"
 #include "mission/distributed_data_change_listener.h"
+#include "mission/distributed_sched_mission_manager.h"
+#include "mission/extension/dms_main_service_channel.h"
 #include "test_log.h"
 
 using namespace testing;
@@ -32,14 +34,73 @@ namespace {
     const int32_t TEST_MISSION_ID = 100;
 }
 
+// OnChange dereferences DistributedSchedMissionManager::GetMainServiceChannel() without a null
+// check, so the channel must be injected before the callback is exercised (same pattern as
+// DistributedDataStorageTest / DMSMissionManagerTest).
+class DmsMainServiceChannelChangeListenerTestMock : public DmsMainServiceChannel {
+public:
+    std::shared_ptr<DmsDeviceInfo> GetDeviceInfoById(const std::string& deviceId) override
+    {
+        (void)deviceId;
+        return nullptr;
+    }
+    std::string GetUuidByNetworkId(const std::string& networkId) override
+    {
+        (void)networkId;
+        return TEST_UUID;
+    }
+    bool GetLocalDeviceId(std::string& networkId) override
+    {
+        networkId = TEST_NETWORK_ID;
+        return true;
+    }
+    std::string GetNetworkIdByUuid(const std::string& uuid) override
+    {
+        (void)uuid;
+        return TEST_NETWORK_ID;
+    }
+    int32_t GetLocalMissionInfos(int32_t numMissions, std::vector<DstbMissionInfo>& missionInfos) override
+    {
+        (void)numMissions;
+        (void)missionInfos;
+        return ERR_OK;
+    }
+    int32_t RegisterMissionListener(const sptr<AAFwk::IMissionListener>& listener) override
+    {
+        (void)listener;
+        return ERR_OK;
+    }
+    int32_t UnRegisterMissionListener(const sptr<AAFwk::IMissionListener>& listener) override
+    {
+        (void)listener;
+        return ERR_OK;
+    }
+    int32_t GetLocalMissionSnapshotInfo(const std::string& networkId, int32_t missionId,
+        AAFwk::MissionSnapshot& missionSnapshot) override
+    {
+        (void)networkId;
+        (void)missionId;
+        (void)missionSnapshot;
+        return ERR_OK;
+    }
+    std::string GetAnonymStr(const std::string &value) override
+    {
+        (void)value;
+        return "anonym";
+    }
+};
+
 void DistributedDataChangeListenerTest::SetUpTestCase()
 {
     mkdir(BASEDIR.c_str(), (S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH));
+    DistributedSchedMissionManager::GetInstance().SetMainServiceChannel(
+        std::make_shared<DmsMainServiceChannelChangeListenerTestMock>());
     DTEST_LOG << "DistributedDataChangeListenerTest::SetUpTestCase" << std::endl;
 }
 
 void DistributedDataChangeListenerTest::TearDownTestCase()
 {
+    DistributedSchedMissionManager::GetInstance().SetMainServiceChannel(nullptr);
     (void)remove(BASEDIR.c_str());
     DTEST_LOG << "DistributedDataChangeListenerTest::TearDownTestCase" << std::endl;
 }

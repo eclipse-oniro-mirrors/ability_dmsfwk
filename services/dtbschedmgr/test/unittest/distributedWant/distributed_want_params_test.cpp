@@ -233,11 +233,13 @@ HWTEST_F(DistributedWantParamsBaseTest, DistributedWantParams_GetStringByType_03
  */
 HWTEST_F(DistributedWantParamsBaseTest, DistributedWantParams_GetStringByType_0400, Function | MediumTest | Level3)
 {
-    const std::string value = "129";
+    // 127 is valid on all platforms: plain char is signed on x86_64 (CHAR_MAX is 127), where 129
+    // would be rejected by AAFwk::Byte::Parse.
+    const std::string value = "127";
     sptr<IInterface> byteObj =
         DistributedWantParams::GetInterfaceByType(DistributedWantParams::VALUE_TYPE_BYTE, value);
     std::string byteVal = DistributedWantParams::GetStringByType(byteObj, DistributedWantParams::VALUE_TYPE_BYTE);
-    EXPECT_EQ(byteVal, "129");
+    EXPECT_EQ(byteVal, "127");
 }
 
 /**
@@ -386,7 +388,9 @@ HWTEST_F(DistributedWantParamsBaseTest, DistributedWantParams_GetDataType_0200, 
  */
 HWTEST_F(DistributedWantParamsBaseTest, DistributedWantParams_GetDataType_0300, Function | MediumTest | Level3)
 {
-    const std::string value = "129";
+    // 127 is valid on all platforms: plain char is signed on x86_64 (CHAR_MAX is 127), where 129
+    // would be rejected by AAFwk::Byte::Parse.
+    const std::string value = "127";
     sptr<IInterface> byteObj =
         DistributedWantParams::GetInterfaceByType(DistributedWantParams::VALUE_TYPE_BYTE, value);
     int type = DistributedWantParams::GetDataType(byteObj);
@@ -523,10 +527,12 @@ HWTEST_F(DistributedWantParamsBaseTest, DistributedWantParams_GetInterfaceByType
  */
 HWTEST_F(DistributedWantParamsBaseTest, DistributedWantParams_GetInterfaceByType_0200, Function | MediumTest | Level3)
 {
-    const std::string value = "129";
+    // 127 is valid on all platforms: plain char is signed on x86_64 (CHAR_MAX is 127), where 129
+    // would be rejected by AAFwk::Byte::Parse.
+    const std::string value = "127";
     sptr<IInterface> byteObj =
         DistributedWantParams::GetInterfaceByType(DistributedWantParams::VALUE_TYPE_BYTE, value);
-    EXPECT_EQ(Byte::Unbox(IByte::Query(byteObj)), 129);
+    EXPECT_EQ(Byte::Unbox(IByte::Query(byteObj)), 127);
 }
 
 /**
@@ -678,7 +684,9 @@ HWTEST_F(DistributedWantParamsBaseTest, DistributedWantParams_CompareInterface_0
  */
 HWTEST_F(DistributedWantParamsBaseTest, DistributedWantParams_CompareInterface_0200, Function | MediumTest | Level3)
 {
-    const std::string value = "129";
+    // 127 is valid on all platforms: plain char is signed on x86_64 (CHAR_MAX is 127), where 129
+    // would be rejected by AAFwk::Byte::Parse.
+    const std::string value = "127";
     sptr<IInterface> interfaceObj =
         DistributedWantParams::GetInterfaceByType(DistributedWantParams::VALUE_TYPE_BYTE, value);
     bool result =
