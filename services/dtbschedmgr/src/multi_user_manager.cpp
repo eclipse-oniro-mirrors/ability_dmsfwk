@@ -36,8 +36,8 @@ namespace {
 
 MultiUserManager& MultiUserManager::GetInstance()
 {
-    static MultiUserManager instance;
-    return instance;
+    static MultiUserManager* instance = new MultiUserManager();
+    return *instance;
 }
 
 MultiUserManager::MultiUserManager()

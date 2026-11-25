@@ -106,22 +106,15 @@ void StopServiceForFuzzCleanup()
     DistributedSchedService::GetInstance().OnStop(stopReason);
     std::this_thread::sleep_for(std::chrono::milliseconds(STOP_SERVICE_WAIT_MS));
 }
-
-class FuzzCleanupGuard {
-public:
-    FuzzCleanupGuard() = default;
-    ~FuzzCleanupGuard() { StopServiceForFuzzCleanup(); }
-};
 }
 }
 /* Fuzzer entry point */
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
-    static OHOS::DistributedSchedule::FuzzCleanupGuard cleanupGuard;
-
     OHOS::DistributedSchedule::OnStopFuzzTest(data, size);
     OHOS::DistributedSchedule::OnActiveFuzzTest(data, size);
     OHOS::DistributedSchedule::HandleBootStartFuzzTest(data, size);
     OHOS::DistributedSchedule::DeviceOnlineNotifyFuzzTest(data, size);
+    OHOS::DistributedSchedule::StopServiceForFuzzCleanup();
     return 0;
 }

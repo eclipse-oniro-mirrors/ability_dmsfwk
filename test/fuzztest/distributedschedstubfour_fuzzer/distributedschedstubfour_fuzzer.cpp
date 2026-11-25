@@ -184,12 +184,6 @@ void StopServiceForFuzzCleanup()
     DistributedSchedService::GetInstance().OnStop(stopReason);
     std::this_thread::sleep_for(std::chrono::milliseconds(STOP_SERVICE_WAIT_MS));
 }
-
-class FuzzCleanupGuard {
-public:
-    FuzzCleanupGuard() = default;
-    ~FuzzCleanupGuard() { StopServiceForFuzzCleanup(); }
-};
 }
 }
 
@@ -200,26 +194,30 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
         return 0;
     }
 
-    static OHOS::DistributedSchedule::FuzzCleanupGuard cleanupGuard;
-
     uint8_t fuzzChoice = data[0];
     switch (fuzzChoice % OHOS::DistributedSchedule::FUZZ_BRANCH_COUNT) {
         case OHOS::DistributedSchedule::START_FREE_INSTALL:
             OHOS::DistributedSchedule::StartRemoteFreeInstallInnerFuzzTest(data, size);
-            return 0;
+            break;
         case OHOS::DistributedSchedule::START_SHARE_FORM:
             OHOS::DistributedSchedule::StartRemoteShareFormInnerFuzzTest(data, size);
-            return 0;
+            break;
         case OHOS::DistributedSchedule::STOP_EXTENSION_ABILITY:
             OHOS::DistributedSchedule::StopRemoteExtensionAbilityInnerFuzzTest(data, size);
-            return 0;
+            break;
         case OHOS::DistributedSchedule::REGISTER_ON_LISTENER:
             OHOS::DistributedSchedule::RegisterOnListenerInnerFuzzTest(data, size);
-            return 0;
+            break;
         case OHOS::DistributedSchedule::STOP_SYNC_MISSIONS:
             OHOS::DistributedSchedule::StopSyncMissionsFromRemoteInnerFuzzTest(data, size);
-            return 0;
+            break;
         default:
-            return 0;
+            break;
     }
+    static bool serviceStopped = false;
+    if (!serviceStopped) {
+        serviceStopped = true;
+        OHOS::DistributedSchedule::StopServiceForFuzzCleanup();
+    }
+    return 0;
 }
