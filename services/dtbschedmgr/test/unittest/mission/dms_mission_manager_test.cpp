@@ -15,12 +15,15 @@
 
 #include "dms_mission_manager_test.h"
 
+#include <atomic>
+#include <chrono>
 #include <mutex>
 #include <thread>
 
 #include "if_system_ability_manager.h"
 #include "ipc_skeleton.h"
 #include "iservice_registry.h"
+#include "nlohmann/json.hpp"
 #include "string_ex.h"
 #include "system_ability_definition.h"
 
@@ -177,6 +180,11 @@ void BindUtMainServiceChannel(const std::shared_ptr<DmsMainServiceChannel>& chan
     mgr.mainServiceChannel_ = channel;
     mgr.SetMainServiceChannel(channel);
 }
+
+/* Set by the branch coverage cases added at the end of this file only, so TearDown can restore the
+   singleton state for them without changing the behaviour of the legacy cases. */
+bool g_missionUtCaseActive = false;
+void ResetMissionManagerUtState();
 }
 
 bool DMSMissionManagerTest::isCaseDone_ = false;
@@ -228,6 +236,10 @@ void DMSMissionManagerTest::TearDown()
     mgr.mainServiceChannel_ = savedMainServiceChannelForUt_;
     mgr.SetMainServiceChannel(savedMainServiceChannelForUt_);
     savedMainServiceChannelForUt_.reset();
+    if (g_missionUtCaseActive) {
+        g_missionUtCaseActive = false;
+        ResetMissionManagerUtState();
+    }
 }
 
 void DMSMissionManagerTest::DeviceInitCallBack::OnRemoteDied()
@@ -3315,5 +3327,1821 @@ HWTEST_F(DMSMissionManagerTest, GetOsAccountData_Invoke_001, TestSize.Level3)
     EXPECT_TRUE(ret);
     DTEST_LOG << "GetOsAccountData_Invoke_001 end" << std::endl;
 }
+
+namespace {
+const std::string UT_MISSION_LOCAL_NETWORK_ID = "ut-mission-local-network-id";
+const std::string UT_MISSION_REMOTE_NETWORK_ID = "ut-mission-remote-network-id";
+const std::string UT_MISSION_REMOTE_UUID = "ut-mission-remote-uuid";
+const std::string UT_MISSION_OTHER_UUID = "ut-mission-other-uuid";
+constexpr int32_t UT_MISSION_ID_FIRST = 1001;
+constexpr int32_t UT_MISSION_ID_SECOND = 1002;
+constexpr int32_t UT_MISSION_ID_THIRD = 1003;
+constexpr int32_t UT_SNAPSHOT_MISSION_ID_FIRST = 2001;
+constexpr int32_t UT_SNAPSHOT_MISSION_ID_SECOND = 2002;
+constexpr int32_t UT_CHANNEL_FAIL_RET = -1;
+constexpr size_t UT_CACHED_MISSION_COUNT = 3;
+constexpr size_t UT_SNAPSHOT_CACHE_ENTRY_COUNT = 3;
+constexpr int32_t UT_SNAPSHOT_NULL_INDEX = 5;
+constexpr int32_t UT_ACCOUNT_USER_ID = 100;
+constexpr size_t UT_SNAPSHOT_CACHE_LIMIT = 10;
+constexpr size_t UT_SNAPSHOT_CACHE_FILL_COUNT = 10;
+
+/**
+ * Configurable DmsMainServiceChannel for driving DistributedSchedMissionManager branches.
+ * Every return value can be preset, so the tests do not depend on real device storage.
+ */
+class DmsMissionUtBranchChannel : public DmsMainServiceChannel {
+public:
+    std::shared_ptr<DmsDeviceInfo> GetDeviceInfoById(const std::string& deviceId) override
+    {
+        if (!deviceOnline_) {
+            return nullptr;
+        }
+        return std::make_shared<DmsDeviceInfo>("ut-mission-device", 0, deviceId);
+    }
+
+    std::string GetUuidByNetworkId(const std::string& networkId) override
+    {
+        (void)networkId;
+        uuidQueryCount_.fetch_add(1);
+        return uuid_;
+    }
+
+    bool GetLocalDeviceId(std::string& networkId) override
+    {
+        localDeviceIdCount_.fetch_add(1);
+        if (!getLocalDeviceIdRet_) {
+            return false;
+        }
+        networkId = localDeviceId_;
+        return true;
+    }
+
+    std::string GetNetworkIdByUuid(const std::string& uuid) override
+    {
+        (void)uuid;
+        return UT_MISSION_REMOTE_NETWORK_ID;
+    }
+
+    int32_t GetLocalMissionInfos(int32_t numMissions, std::vector<DstbMissionInfo>& missionInfos) override
+    {
+        (void)numMissions;
+        localMissionInfosCount_.fetch_add(1);
+        if (getLocalMissionInfosRet_ != ERR_OK) {
+            return getLocalMissionInfosRet_;
+        }
+        missionInfos = localMissionInfos_;
+        return ERR_OK;
+    }
+
+    int32_t RegisterMissionListener(const sptr<AAFwk::IMissionListener>& listener) override
+    {
+        (void)listener;
+        registerCount_.fetch_add(1);
+        return registerRet_;
+    }
+
+    int32_t UnRegisterMissionListener(const sptr<AAFwk::IMissionListener>& listener) override
+    {
+        (void)listener;
+        unregisterCount_.fetch_add(1);
+        return unregisterRet_;
+    }
+
+    int32_t GetLocalMissionSnapshotInfo(const std::string& networkId, int32_t missionId,
+        AAFwk::MissionSnapshot& missionSnapshot) override
+    {
+        (void)networkId;
+        (void)missionId;
+        snapshotQueryCount_.fetch_add(1);
+        if (getLocalMissionSnapshotRet_ != ERR_OK) {
+            return getLocalMissionSnapshotRet_;
+        }
+        missionSnapshot.snapshot = CreateUtPixelMap();
+        return ERR_OK;
+    }
+
+    std::string GetAnonymStr(const std::string& value) override
+    {
+        return value;
+    }
+
+    bool deviceOnline_ = false;
+    std::string uuid_ = UT_MISSION_REMOTE_UUID;
+    std::string localDeviceId_ = UT_MISSION_LOCAL_NETWORK_ID;
+    bool getLocalDeviceIdRet_ = true;
+    int32_t getLocalMissionInfosRet_ = ERR_OK;
+    std::vector<DstbMissionInfo> localMissionInfos_;
+    int32_t registerRet_ = ERR_OK;
+    int32_t unregisterRet_ = ERR_OK;
+    int32_t getLocalMissionSnapshotRet_ = ERR_OK;
+    std::atomic<int32_t> uuidQueryCount_ { 0 };
+    std::atomic<int32_t> localDeviceIdCount_ { 0 };
+    std::atomic<int32_t> localMissionInfosCount_ { 0 };
+    std::atomic<int32_t> registerCount_ { 0 };
+    std::atomic<int32_t> unregisterCount_ { 0 };
+    std::atomic<int32_t> snapshotQueryCount_ { 0 };
+};
+
+/**
+ * Clear the singleton state touched by the mission manager tests, so every case starts clean.
+ */
+void ResetMissionManagerUtState()
+{
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.listenDeviceLock_);
+        mgr.listenDeviceMap_.clear();
+        mgr.cachedSnapshotInfos_.clear();
+    }
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.remoteSyncDeviceLock_);
+        mgr.remoteSyncDeviceSet_.clear();
+    }
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.remoteMissionInfosLock_);
+        mgr.deviceMissionInfos_.clear();
+    }
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.remoteDmsLock_);
+        mgr.remoteDmsMap_.clear();
+    }
+    mgr.deviceHandle_.clear();
+    mgr.missionHandler_ = nullptr;
+    mgr.missionChangeHandler_ = nullptr;
+    mgr.distributedDataStorage_ = nullptr;
+    mgr.isRegMissionChange_ = false;
+}
+
+std::shared_ptr<DmsMissionUtBranchChannel> PrepareMissionUtChannel(bool deviceOnline = true)
+{
+    ResetMissionManagerUtState();
+    auto channel = std::make_shared<DmsMissionUtBranchChannel>();
+    channel->deviceOnline_ = deviceOnline;
+    BindUtMainServiceChannel(channel);
+    g_missionUtCaseActive = true;
+    return channel;
+}
+
+DstbMissionInfo CreateUtDstbMissionInfo(int32_t missionId)
+{
+    DstbMissionInfo missionInfo;
+    missionInfo.id = missionId;
+    missionInfo.label = "ut-mission-label-" + std::to_string(missionId);
+    missionInfo.baseWant = std::make_shared<AAFwk::Want>();
+    return missionInfo;
+}
+
+std::vector<DstbMissionInfo> CreateUtDstbMissionInfos()
+{
+    return {
+        CreateUtDstbMissionInfo(UT_MISSION_ID_FIRST),
+        CreateUtDstbMissionInfo(UT_MISSION_ID_SECOND),
+        CreateUtDstbMissionInfo(UT_MISSION_ID_THIRD),
+    };
+}
+
+std::unique_ptr<Snapshot> CreateUtSnapshotWithoutPixelMap()
+{
+    auto snapshot = std::make_unique<Snapshot>();
+    snapshot->rect_ = std::make_unique<Rect>(0, 0, 0, 0);
+    snapshot->windowBounds_ = std::make_unique<Rect>(0, 0, 0, 0);
+    return snapshot;
+}
+
+std::unique_ptr<Snapshot> CreateUtSnapshotWithPixelMap()
+{
+    auto snapshot = CreateUtSnapshotWithoutPixelMap();
+    snapshot->pixelMap_ = CreateUtPixelMap();
+    return snapshot;
+}
+
+sptr<IDistributedSched> CreateUtMockRemoteDms()
+{
+    return new MockDistributedSched();
+}
+
+std::string CreateUtSnapshotKey(const std::string& deviceId, int32_t missionId)
+{
+    return deviceId + "_" + std::to_string(missionId);
+}
+
+bool HasUtSnapshotCacheEntry(const std::string& key)
+{
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    return mgr.cachedSnapshotInfos_.find(key) != mgr.cachedSnapshotInfos_.end();
+}
+
+bool IsUtSnapshotCacheEntryNull(const std::string& key)
+{
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    auto iter = mgr.cachedSnapshotInfos_.find(key);
+    return iter != mgr.cachedSnapshotInfos_.end() && iter->second == nullptr;
+}
+} // namespace
+
+/**
+ * @tc.name: GetMissionInfos_002
+ * @tc.desc: GetMissionInfos returns invalid parameters when deviceId is empty
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, GetMissionInfos_002, TestSize.Level3)
+{
+    DTEST_LOG << "GetMissionInfos_002 begin" << std::endl;
+    PrepareMissionUtChannel();
+    std::vector<AAFwk::MissionInfo> missionInfos;
+    auto ret = DistributedSchedMissionManager::GetInstance().GetMissionInfos("", NORMAL_NUM_MISSIONS, missionInfos);
+    EXPECT_EQ(ret, INVALID_PARAMETERS_ERR);
+    EXPECT_TRUE(missionInfos.empty());
+    DTEST_LOG << "GetMissionInfos_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: GetMissionInfos_003
+ * @tc.desc: GetMissionInfos returns invalid parameters when numMissions is not positive
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, GetMissionInfos_003, TestSize.Level3)
+{
+    DTEST_LOG << "GetMissionInfos_003 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    std::vector<AAFwk::MissionInfo> missionInfos;
+    EXPECT_EQ(mgr.GetMissionInfos(DEVICE_ID, 0, missionInfos), INVALID_PARAMETERS_ERR);
+    EXPECT_EQ(mgr.GetMissionInfos(DEVICE_ID, -1, missionInfos), INVALID_PARAMETERS_ERR);
+    EXPECT_TRUE(missionInfos.empty());
+    DTEST_LOG << "GetMissionInfos_003 end" << std::endl;
+}
+
+/**
+ * @tc.name: GetMissionInfos_004
+ * @tc.desc: GetMissionInfos returns invalid parameters when uuid of the device is empty
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, GetMissionInfos_004, TestSize.Level3)
+{
+    DTEST_LOG << "GetMissionInfos_004 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    channel->uuid_.clear();
+    std::vector<AAFwk::MissionInfo> missionInfos;
+    auto ret = DistributedSchedMissionManager::GetInstance().GetMissionInfos(DEVICE_ID, NORMAL_NUM_MISSIONS,
+        missionInfos);
+    EXPECT_EQ(ret, INVALID_PARAMETERS_ERR);
+    EXPECT_TRUE(missionInfos.empty());
+    DTEST_LOG << "GetMissionInfos_004 end" << std::endl;
+}
+
+/**
+ * @tc.name: GetMissionInfos_005
+ * @tc.desc: GetMissionInfos returns null object when the device has no cached missions
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, GetMissionInfos_005, TestSize.Level3)
+{
+    DTEST_LOG << "GetMissionInfos_005 begin" << std::endl;
+    PrepareMissionUtChannel();
+    std::vector<AAFwk::MissionInfo> missionInfos;
+    auto ret = DistributedSchedMissionManager::GetInstance().GetMissionInfos(DEVICE_ID, NORMAL_NUM_MISSIONS,
+        missionInfos);
+    EXPECT_EQ(ret, ERR_NULL_OBJECT);
+    EXPECT_TRUE(missionInfos.empty());
+    DTEST_LOG << "GetMissionInfos_005 end" << std::endl;
+}
+
+/**
+ * @tc.name: GetMissionInfos_001
+ * @tc.desc: GetMissionInfos converts all cached missions when numMissions is larger than the cache
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, GetMissionInfos_001, TestSize.Level3)
+{
+    DTEST_LOG << "GetMissionInfos_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    auto dstbMissionInfos = CreateUtDstbMissionInfos();
+    mgr.RebornMissionCache(DEVICE_ID, dstbMissionInfos);
+    std::vector<AAFwk::MissionInfo> missionInfos;
+    auto ret = mgr.GetMissionInfos(DEVICE_ID, NORMAL_NUM_MISSIONS, missionInfos);
+    EXPECT_EQ(ret, ERR_OK);
+    EXPECT_EQ(missionInfos.size(), dstbMissionInfos.size());
+    if (missionInfos.size() == dstbMissionInfos.size()) {
+        EXPECT_EQ(missionInfos[0].id, UT_MISSION_ID_FIRST);
+        EXPECT_EQ(missionInfos[1].id, UT_MISSION_ID_SECOND);
+        EXPECT_EQ(missionInfos[2].id, UT_MISSION_ID_THIRD);
+    }
+    DTEST_LOG << "GetMissionInfos_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: GetMissionInfos_006
+ * @tc.desc: GetMissionInfos returns at most numMissions missions
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, GetMissionInfos_006, TestSize.Level3)
+{
+    DTEST_LOG << "GetMissionInfos_006 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.RebornMissionCache(DEVICE_ID, CreateUtDstbMissionInfos());
+    std::vector<AAFwk::MissionInfo> missionInfos;
+    auto ret = mgr.GetMissionInfos(DEVICE_ID, 2, missionInfos);
+    EXPECT_EQ(ret, ERR_OK);
+    EXPECT_EQ(missionInfos.size(), 2u);
+    if (missionInfos.size() == 2u) {
+        EXPECT_EQ(missionInfos[0].id, UT_MISSION_ID_FIRST);
+        EXPECT_EQ(missionInfos[1].id, UT_MISSION_ID_SECOND);
+    }
+    DTEST_LOG << "GetMissionInfos_006 end" << std::endl;
+}
+
+/**
+ * @tc.name: FetchCachedRemoteMissions_002
+ * @tc.desc: FetchCachedRemoteMissions returns invalid parameters when uuid is empty
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, FetchCachedRemoteMissions_002, TestSize.Level3)
+{
+    DTEST_LOG << "FetchCachedRemoteMissions_002 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    channel->uuid_.clear();
+    std::vector<DstbMissionInfo> missionInfos;
+    auto ret = DistributedSchedMissionManager::GetInstance().FetchCachedRemoteMissions(DEVICE_ID,
+        NORMAL_NUM_MISSIONS, missionInfos);
+    EXPECT_EQ(ret, INVALID_PARAMETERS_ERR);
+    DTEST_LOG << "FetchCachedRemoteMissions_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: FetchCachedRemoteMissions_001
+ * @tc.desc: FetchCachedRemoteMissions returns all missions when numMissions is larger than the cache size
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, FetchCachedRemoteMissions_001, TestSize.Level3)
+{
+    DTEST_LOG << "FetchCachedRemoteMissions_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.RebornMissionCache(DEVICE_ID, CreateUtDstbMissionInfos());
+    std::vector<DstbMissionInfo> missionInfos;
+    auto ret = mgr.FetchCachedRemoteMissions(DEVICE_ID, NUM_MISSIONS, missionInfos);
+    EXPECT_EQ(ret, ERR_NONE);
+    EXPECT_EQ(missionInfos.size(), UT_CACHED_MISSION_COUNT);
+    DTEST_LOG << "FetchCachedRemoteMissions_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: RebornMissionCache_002
+ * @tc.desc: RebornMissionCache skips caching when uuid is empty
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, RebornMissionCache_002, TestSize.Level3)
+{
+    DTEST_LOG << "RebornMissionCache_002 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    channel->uuid_.clear();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.RebornMissionCache(DEVICE_ID, CreateUtDstbMissionInfos());
+    EXPECT_TRUE(mgr.deviceMissionInfos_.empty());
+    DTEST_LOG << "RebornMissionCache_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: RebornMissionCache_001
+ * @tc.desc: RebornMissionCache replaces the missions cached for the same uuid
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, RebornMissionCache_001, TestSize.Level3)
+{
+    DTEST_LOG << "RebornMissionCache_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.RebornMissionCache(DEVICE_ID, CreateUtDstbMissionInfos());
+    EXPECT_EQ(mgr.deviceMissionInfos_.size(), 1u);
+    auto iter = mgr.deviceMissionInfos_.find(UT_MISSION_REMOTE_UUID);
+    ASSERT_TRUE(iter != mgr.deviceMissionInfos_.end());
+    EXPECT_EQ(iter->second.size(), UT_CACHED_MISSION_COUNT);
+
+    mgr.RebornMissionCache(DEVICE_ID, std::vector<DstbMissionInfo>());
+    EXPECT_EQ(mgr.deviceMissionInfos_.size(), 1u);
+    iter = mgr.deviceMissionInfos_.find(UT_MISSION_REMOTE_UUID);
+    ASSERT_TRUE(iter != mgr.deviceMissionInfos_.end());
+    EXPECT_TRUE(iter->second.empty());
+    DTEST_LOG << "RebornMissionCache_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: CleanMissionCache_002
+ * @tc.desc: CleanMissionCache keeps the cache untouched when uuid is empty
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, CleanMissionCache_002, TestSize.Level3)
+{
+    DTEST_LOG << "CleanMissionCache_002 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.RebornMissionCache(DEVICE_ID, CreateUtDstbMissionInfos());
+    EXPECT_EQ(mgr.deviceMissionInfos_.size(), 1u);
+
+    channel->uuid_.clear();
+    mgr.CleanMissionCache(DEVICE_ID);
+    EXPECT_EQ(mgr.deviceMissionInfos_.size(), 1u);
+    DTEST_LOG << "CleanMissionCache_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: CleanMissionCache_001
+ * @tc.desc: CleanMissionCache removes the missions cached for the uuid
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, CleanMissionCache_001, TestSize.Level3)
+{
+    DTEST_LOG << "CleanMissionCache_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.RebornMissionCache(DEVICE_ID, CreateUtDstbMissionInfos());
+    EXPECT_EQ(mgr.deviceMissionInfos_.size(), 1u);
+
+    mgr.CleanMissionCache(DEVICE_ID);
+    EXPECT_TRUE(mgr.deviceMissionInfos_.empty());
+    DTEST_LOG << "CleanMissionCache_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: IsDeviceIdValidated_001
+ * @tc.desc: IsDeviceIdValidated returns false when the channel does not know the device
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, IsDeviceIdValidated_001, TestSize.Level3)
+{
+    DTEST_LOG << "IsDeviceIdValidated_001 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel(false);
+    channel->uuid_ = UT_MISSION_REMOTE_UUID;
+    EXPECT_FALSE(DistributedSchedMissionManager::GetInstance().IsDeviceIdValidated(DEVICE_ID));
+    DTEST_LOG << "IsDeviceIdValidated_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: GetRemoteDms_001
+ * @tc.desc: GetRemoteDms returns nullptr when deviceId is empty
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, GetRemoteDms_001, TestSize.Level3)
+{
+    DTEST_LOG << "GetRemoteDms_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    EXPECT_TRUE(DistributedSchedMissionManager::GetInstance().GetRemoteDms("") == nullptr);
+    DTEST_LOG << "GetRemoteDms_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: EnqueueCachedSnapshotInfo_002
+ * @tc.desc: EnqueueCachedSnapshotInfo keeps the entry when the cached snapshot is null
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, EnqueueCachedSnapshotInfo_002, TestSize.Level3)
+{
+    DTEST_LOG << "EnqueueCachedSnapshotInfo_002 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    const std::string key = CreateUtSnapshotKey(DEVICE_ID, UT_SNAPSHOT_MISSION_ID_FIRST);
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.listenDeviceLock_);
+        mgr.cachedSnapshotInfos_[key] = nullptr;
+    }
+    mgr.EnqueueCachedSnapshotInfo(DEVICE_ID, UT_SNAPSHOT_MISSION_ID_FIRST, CreateUtSnapshotWithPixelMap());
+    EXPECT_TRUE(IsUtSnapshotCacheEntryNull(key));
+    EXPECT_EQ(mgr.cachedSnapshotInfos_.size(), 1u);
+    DTEST_LOG << "EnqueueCachedSnapshotInfo_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: EnqueueCachedSnapshotInfo_001
+ * @tc.desc: EnqueueCachedSnapshotInfo replaces the snapshot cached for the same key
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, EnqueueCachedSnapshotInfo_001, TestSize.Level3)
+{
+    DTEST_LOG << "EnqueueCachedSnapshotInfo_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.EnqueueCachedSnapshotInfo(DEVICE_ID, UT_SNAPSHOT_MISSION_ID_FIRST, CreateUtSnapshotWithoutPixelMap());
+    mgr.EnqueueCachedSnapshotInfo(DEVICE_ID, UT_SNAPSHOT_MISSION_ID_FIRST, CreateUtSnapshotWithPixelMap());
+    EXPECT_EQ(mgr.cachedSnapshotInfos_.size(), 1u);
+    auto cachedSnapshot = mgr.DequeueCachedSnapshotInfo(DEVICE_ID, UT_SNAPSHOT_MISSION_ID_FIRST);
+    ASSERT_TRUE(cachedSnapshot != nullptr);
+    EXPECT_NE(cachedSnapshot->pixelMap_.get(), nullptr);
+    DTEST_LOG << "EnqueueCachedSnapshotInfo_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: EnqueueCachedSnapshotInfo_003
+ * @tc.desc: EnqueueCachedSnapshotInfo evicts the oldest snapshot when the cache is full
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, EnqueueCachedSnapshotInfo_003, TestSize.Level3)
+{
+    DTEST_LOG << "EnqueueCachedSnapshotInfo_003 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    for (size_t index = 1; index <= UT_SNAPSHOT_CACHE_FILL_COUNT; ++index) {
+        const int32_t missionId = static_cast<int32_t>(index);
+        std::string indexStr = std::to_string(index);
+        if (index < UT_SNAPSHOT_CACHE_FILL_COUNT) {
+            indexStr = "0" + indexStr;
+        }
+        mgr.EnqueueCachedSnapshotInfo("ut-mission-full-" + indexStr, missionId,
+            CreateUtSnapshotWithoutPixelMap());
+    }
+    EXPECT_EQ(mgr.cachedSnapshotInfos_.size(), UT_SNAPSHOT_CACHE_LIMIT);
+    const std::string evictedKey = CreateUtSnapshotKey("ut-mission-full-01", 1);
+    const std::string nullKey = CreateUtSnapshotKey(
+        "ut-mission-full-0" + std::to_string(UT_SNAPSHOT_NULL_INDEX), UT_SNAPSHOT_NULL_INDEX);
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.listenDeviceLock_);
+        mgr.cachedSnapshotInfos_[nullKey] = nullptr;
+    }
+    EXPECT_TRUE(IsUtSnapshotCacheEntryNull(nullKey));
+
+    mgr.EnqueueCachedSnapshotInfo("ut-mission-new", UT_SNAPSHOT_MISSION_ID_SECOND, CreateUtSnapshotWithPixelMap());
+    EXPECT_EQ(mgr.cachedSnapshotInfos_.size(), UT_SNAPSHOT_CACHE_LIMIT);
+    EXPECT_FALSE(HasUtSnapshotCacheEntry(evictedKey));
+    EXPECT_TRUE(HasUtSnapshotCacheEntry(CreateUtSnapshotKey("ut-mission-new", UT_SNAPSHOT_MISSION_ID_SECOND)));
+    DTEST_LOG << "EnqueueCachedSnapshotInfo_003 end" << std::endl;
+}
+
+/**
+ * @tc.name: DequeueCachedSnapshotInfo_002
+ * @tc.desc: DequeueCachedSnapshotInfo returns nullptr when the cached snapshot is null
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, DequeueCachedSnapshotInfo_002, TestSize.Level3)
+{
+    DTEST_LOG << "DequeueCachedSnapshotInfo_002 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    const std::string key = CreateUtSnapshotKey(DEVICE_ID, UT_SNAPSHOT_MISSION_ID_FIRST);
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.listenDeviceLock_);
+        mgr.cachedSnapshotInfos_[key] = nullptr;
+    }
+    EXPECT_EQ(mgr.DequeueCachedSnapshotInfo(DEVICE_ID, UT_SNAPSHOT_MISSION_ID_FIRST).get(), nullptr);
+    DTEST_LOG << "DequeueCachedSnapshotInfo_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: DequeueCachedSnapshotInfo_001
+ * @tc.desc: DequeueCachedSnapshotInfo returns the cached snapshot only once
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, DequeueCachedSnapshotInfo_001, TestSize.Level3)
+{
+    DTEST_LOG << "DequeueCachedSnapshotInfo_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.EnqueueCachedSnapshotInfo(DEVICE_ID, UT_SNAPSHOT_MISSION_ID_FIRST, CreateUtSnapshotWithPixelMap());
+    auto cachedSnapshot = mgr.DequeueCachedSnapshotInfo(DEVICE_ID, UT_SNAPSHOT_MISSION_ID_FIRST);
+    ASSERT_TRUE(cachedSnapshot != nullptr);
+    EXPECT_NE(cachedSnapshot->pixelMap_.get(), nullptr);
+    EXPECT_TRUE(mgr.cachedSnapshotInfos_.empty());
+    EXPECT_EQ(mgr.DequeueCachedSnapshotInfo(DEVICE_ID, UT_SNAPSHOT_MISSION_ID_FIRST).get(), nullptr);
+    DTEST_LOG << "DequeueCachedSnapshotInfo_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: DeleteCachedSnapshotInfo_002
+ * @tc.desc: DeleteCachedSnapshotInfo keeps the cache untouched when networkId is empty
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, DeleteCachedSnapshotInfo_002, TestSize.Level3)
+{
+    DTEST_LOG << "DeleteCachedSnapshotInfo_002 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.EnqueueCachedSnapshotInfo(DEVICE_ID, UT_SNAPSHOT_MISSION_ID_FIRST, CreateUtSnapshotWithoutPixelMap());
+    mgr.DeleteCachedSnapshotInfo("");
+    EXPECT_EQ(mgr.cachedSnapshotInfos_.size(), 1u);
+    DTEST_LOG << "DeleteCachedSnapshotInfo_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: DeleteCachedSnapshotInfo_001
+ * @tc.desc: DeleteCachedSnapshotInfo removes only the snapshots belonging to the uuid
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, DeleteCachedSnapshotInfo_001, TestSize.Level3)
+{
+    DTEST_LOG << "DeleteCachedSnapshotInfo_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.EnqueueCachedSnapshotInfo(UT_MISSION_REMOTE_UUID, UT_SNAPSHOT_MISSION_ID_FIRST,
+        CreateUtSnapshotWithoutPixelMap());
+    mgr.EnqueueCachedSnapshotInfo(UT_MISSION_REMOTE_UUID, UT_SNAPSHOT_MISSION_ID_SECOND,
+        CreateUtSnapshotWithoutPixelMap());
+    mgr.EnqueueCachedSnapshotInfo(UT_MISSION_OTHER_UUID, UT_SNAPSHOT_MISSION_ID_FIRST,
+        CreateUtSnapshotWithoutPixelMap());
+    EXPECT_EQ(mgr.cachedSnapshotInfos_.size(), UT_SNAPSHOT_CACHE_ENTRY_COUNT);
+
+    mgr.DeleteCachedSnapshotInfo(DEVICE_ID);
+    EXPECT_EQ(mgr.cachedSnapshotInfos_.size(), 1u);
+    EXPECT_TRUE(HasUtSnapshotCacheEntry(CreateUtSnapshotKey(UT_MISSION_OTHER_UUID, UT_SNAPSHOT_MISSION_ID_FIRST)));
+    DTEST_LOG << "DeleteCachedSnapshotInfo_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: GetRemoteMissionSnapshotInfo_002
+ * @tc.desc: GetRemoteMissionSnapshotInfo returns invalid parameters when uuid is empty
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, GetRemoteMissionSnapshotInfo_002, TestSize.Level3)
+{
+    DTEST_LOG << "GetRemoteMissionSnapshotInfo_002 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    channel->uuid_.clear();
+    std::unique_ptr<AAFwk::MissionSnapshot> missionSnapshot;
+    auto ret = DistributedSchedMissionManager::GetInstance().GetRemoteMissionSnapshotInfo(DEVICE_ID,
+        UT_SNAPSHOT_MISSION_ID_FIRST, missionSnapshot);
+    EXPECT_EQ(ret, INVALID_PARAMETERS_ERR);
+    DTEST_LOG << "GetRemoteMissionSnapshotInfo_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: GetRemoteMissionSnapshotInfo_001
+ * @tc.desc: GetRemoteMissionSnapshotInfo returns the cached snapshot without touching the storage
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, GetRemoteMissionSnapshotInfo_001, TestSize.Level3)
+{
+    DTEST_LOG << "GetRemoteMissionSnapshotInfo_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.EnqueueCachedSnapshotInfo(UT_MISSION_REMOTE_UUID, UT_SNAPSHOT_MISSION_ID_FIRST,
+        CreateUtSnapshotWithPixelMap());
+    std::unique_ptr<AAFwk::MissionSnapshot> missionSnapshot = std::make_unique<AAFwk::MissionSnapshot>();
+    auto ret = mgr.GetRemoteMissionSnapshotInfo(DEVICE_ID, UT_SNAPSHOT_MISSION_ID_FIRST, missionSnapshot);
+    EXPECT_EQ(ret, ERR_NONE);
+    ASSERT_TRUE(missionSnapshot != nullptr);
+    EXPECT_NE(missionSnapshot->snapshot.get(), nullptr);
+    EXPECT_TRUE(mgr.cachedSnapshotInfos_.empty());
+    DTEST_LOG << "GetRemoteMissionSnapshotInfo_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: GetRemoteMissionSnapshotInfo_003
+ * @tc.desc: GetRemoteMissionSnapshotInfo returns null object on cache miss without data storage
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, GetRemoteMissionSnapshotInfo_003, TestSize.Level3)
+{
+    DTEST_LOG << "GetRemoteMissionSnapshotInfo_003 begin" << std::endl;
+    PrepareMissionUtChannel();
+    std::unique_ptr<AAFwk::MissionSnapshot> missionSnapshot;
+    auto ret = DistributedSchedMissionManager::GetInstance().GetRemoteMissionSnapshotInfo(DEVICE_ID,
+        UT_SNAPSHOT_MISSION_ID_FIRST, missionSnapshot);
+    EXPECT_EQ(ret, ERR_NULL_OBJECT);
+    DTEST_LOG << "GetRemoteMissionSnapshotInfo_003 end" << std::endl;
+}
+
+/**
+ * @tc.name: MissionSnapshotSequence_001
+ * @tc.desc: MissionSnapshotSequence writes both the snapshot info and the pixel map
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, MissionSnapshotSequence_001, TestSize.Level3)
+{
+    DTEST_LOG << "MissionSnapshotSequence_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    Snapshot snapshot;
+    snapshot.rect_ = std::make_unique<Rect>(0, 0, 0, 0);
+    snapshot.windowBounds_ = std::make_unique<Rect>(0, 0, 0, 0);
+    snapshot.pixelMap_ = CreateUtPixelMap();
+    MessageParcel data;
+    auto ret = DistributedSchedMissionManager::GetInstance().MissionSnapshotSequence(snapshot, data);
+    EXPECT_EQ(ret, ERR_OK);
+    EXPECT_GT(data.GetReadableBytes(), 0u);
+    DTEST_LOG << "MissionSnapshotSequence_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: MissionSnapshotChanged_002
+ * @tc.desc: MissionSnapshotChanged returns invalid parameters when the local device id is unavailable
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, MissionSnapshotChanged_002, TestSize.Level3)
+{
+    DTEST_LOG << "MissionSnapshotChanged_002 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    channel->getLocalDeviceIdRet_ = false;
+    auto ret = DistributedSchedMissionManager::GetInstance().MissionSnapshotChanged(UT_SNAPSHOT_MISSION_ID_FIRST);
+    EXPECT_EQ(ret, INVALID_PARAMETERS_ERR);
+    DTEST_LOG << "MissionSnapshotChanged_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: MissionSnapshotChanged_003
+ * @tc.desc: MissionSnapshotChanged returns the error code of GetLocalMissionSnapshotInfo
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, MissionSnapshotChanged_003, TestSize.Level3)
+{
+    DTEST_LOG << "MissionSnapshotChanged_003 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    channel->getLocalMissionSnapshotRet_ = UT_CHANNEL_FAIL_RET;
+    auto ret = DistributedSchedMissionManager::GetInstance().MissionSnapshotChanged(UT_SNAPSHOT_MISSION_ID_FIRST);
+    EXPECT_EQ(ret, UT_CHANNEL_FAIL_RET);
+    DTEST_LOG << "MissionSnapshotChanged_003 end" << std::endl;
+}
+
+/**
+ * @tc.name: MissionSnapshotChanged_001
+ * @tc.desc: MissionSnapshotChanged returns null object when the data storage is unavailable
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, MissionSnapshotChanged_001, TestSize.Level3)
+{
+    DTEST_LOG << "MissionSnapshotChanged_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto ret = DistributedSchedMissionManager::GetInstance().MissionSnapshotChanged(UT_SNAPSHOT_MISSION_ID_FIRST);
+    EXPECT_EQ(ret, ERR_NULL_OBJECT);
+    DTEST_LOG << "MissionSnapshotChanged_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: MissionSnapshotDestroyed_002
+ * @tc.desc: MissionSnapshotDestroyed returns invalid parameters when the local device id is unavailable
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, MissionSnapshotDestroyed_002, TestSize.Level3)
+{
+    DTEST_LOG << "MissionSnapshotDestroyed_002 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    channel->getLocalDeviceIdRet_ = false;
+    auto ret = DistributedSchedMissionManager::GetInstance().MissionSnapshotDestroyed(UT_SNAPSHOT_MISSION_ID_FIRST);
+    EXPECT_EQ(ret, INVALID_PARAMETERS_ERR);
+    DTEST_LOG << "MissionSnapshotDestroyed_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: MissionSnapshotDestroyed_001
+ * @tc.desc: MissionSnapshotDestroyed returns null object when the data storage is unavailable
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, MissionSnapshotDestroyed_001, TestSize.Level3)
+{
+    DTEST_LOG << "MissionSnapshotDestroyed_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto ret = DistributedSchedMissionManager::GetInstance().MissionSnapshotDestroyed(UT_SNAPSHOT_MISSION_ID_FIRST);
+    EXPECT_EQ(ret, ERR_NULL_OBJECT);
+    DTEST_LOG << "MissionSnapshotDestroyed_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: InitAllSnapshots_001
+ * @tc.desc: InitAllSnapshots walks every mission even when the snapshot cannot be stored
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, InitAllSnapshots_001, TestSize.Level3)
+{
+    DTEST_LOG << "InitAllSnapshots_001 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    auto missionInfos = CreateUtDstbMissionInfos();
+    EXPECT_NO_FATAL_FAILURE(DistributedSchedMissionManager::GetInstance().InitAllSnapshots(missionInfos));
+    EXPECT_EQ(channel->snapshotQueryCount_.load(), static_cast<int32_t>(missionInfos.size()));
+    DTEST_LOG << "InitAllSnapshots_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: StoreSnapshotInfo_001
+ * @tc.desc: StoreSnapshotInfo returns null object when the data storage is unavailable
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, StoreSnapshotInfo_001, TestSize.Level3)
+{
+    DTEST_LOG << "StoreSnapshotInfo_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    std::vector<uint8_t> byteStream(BYTESTREAM_LENGTH, ONE_BYTE);
+    auto ret = DistributedSchedMissionManager::GetInstance().StoreSnapshotInfo(DEVICE_ID,
+        UT_SNAPSHOT_MISSION_ID_FIRST, byteStream.data(), byteStream.size());
+    EXPECT_EQ(ret, ERR_NULL_OBJECT);
+    DTEST_LOG << "StoreSnapshotInfo_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: RemoveSnapshotInfo_001
+ * @tc.desc: RemoveSnapshotInfo returns null object when the data storage is unavailable
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, RemoveSnapshotInfo_001, TestSize.Level3)
+{
+    DTEST_LOG << "RemoveSnapshotInfo_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto ret = DistributedSchedMissionManager::GetInstance().RemoveSnapshotInfo(DEVICE_ID,
+        UT_SNAPSHOT_MISSION_ID_FIRST);
+    EXPECT_EQ(ret, ERR_NULL_OBJECT);
+    DTEST_LOG << "RemoveSnapshotInfo_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: DeleteDataStorage_003
+ * @tc.desc: DeleteDataStorage returns early when the data storage is unavailable
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, DeleteDataStorage_003, TestSize.Level3)
+{
+    DTEST_LOG << "DeleteDataStorage_003 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    EXPECT_NO_FATAL_FAILURE(DistributedSchedMissionManager::GetInstance().DeleteDataStorage(DEVICE_ID, false));
+    EXPECT_EQ(channel->uuidQueryCount_.load(), 0);
+    DTEST_LOG << "DeleteDataStorage_003 end" << std::endl;
+}
+
+/**
+ * @tc.name: DeleteDataStorage_001
+ * @tc.desc: DeleteDataStorage deletes immediately when no handler is available
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, DeleteDataStorage_001, TestSize.Level3)
+{
+    DTEST_LOG << "DeleteDataStorage_001 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.distributedDataStorage_ = std::make_shared<DistributedDataStorage>();
+    EXPECT_NO_FATAL_FAILURE(mgr.DeleteDataStorage(DEVICE_ID, false));
+    EXPECT_EQ(channel->uuidQueryCount_.load(), 1);
+    DTEST_LOG << "DeleteDataStorage_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: DeleteDataStorage_002
+ * @tc.desc: DeleteDataStorage does not post the delayed task when no handler is available
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, DeleteDataStorage_002, TestSize.Level3)
+{
+    DTEST_LOG << "DeleteDataStorage_002 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.distributedDataStorage_ = std::make_shared<DistributedDataStorage>();
+    EXPECT_NO_FATAL_FAILURE(mgr.DeleteDataStorage(DEVICE_ID, true));
+    EXPECT_EQ(channel->uuidQueryCount_.load(), 1);
+    DTEST_LOG << "DeleteDataStorage_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: DeviceOnlineNotify_002
+ * @tc.desc: DeviceOnlineNotify returns early when networkId is empty
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, DeviceOnlineNotify_002, TestSize.Level3)
+{
+    DTEST_LOG << "DeviceOnlineNotify_002 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    EXPECT_NO_FATAL_FAILURE(DistributedSchedMissionManager::GetInstance().DeviceOnlineNotify(""));
+    EXPECT_EQ(channel->uuidQueryCount_.load(), 0);
+    DTEST_LOG << "DeviceOnlineNotify_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: DeviceOnlineNotify_001
+ * @tc.desc: DeviceOnlineNotify only looks up the uuid when no handler is available
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, DeviceOnlineNotify_001, TestSize.Level3)
+{
+    DTEST_LOG << "DeviceOnlineNotify_001 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    EXPECT_NO_FATAL_FAILURE(DistributedSchedMissionManager::GetInstance().DeviceOnlineNotify(DEVICE_ID));
+    EXPECT_EQ(channel->uuidQueryCount_.load(), 1);
+    DTEST_LOG << "DeviceOnlineNotify_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: DeviceOfflineNotify_002
+ * @tc.desc: DeviceOfflineNotify returns early when networkId is empty
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, DeviceOfflineNotify_002, TestSize.Level3)
+{
+    DTEST_LOG << "DeviceOfflineNotify_002 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    EXPECT_NO_FATAL_FAILURE(DistributedSchedMissionManager::GetInstance().DeviceOfflineNotify(""));
+    EXPECT_EQ(channel->uuidQueryCount_.load(), 0);
+    DTEST_LOG << "DeviceOfflineNotify_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: DeviceOfflineNotify_001
+ * @tc.desc: DeviceOfflineNotify handles a device without cached resources
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, DeviceOfflineNotify_001, TestSize.Level3)
+{
+    DTEST_LOG << "DeviceOfflineNotify_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.Init();
+    EXPECT_NO_FATAL_FAILURE(mgr.DeviceOfflineNotify(DEVICE_ID));
+    EXPECT_TRUE(mgr.remoteDmsMap_.empty());
+    EXPECT_TRUE(mgr.listenDeviceMap_.empty());
+    DTEST_LOG << "DeviceOfflineNotify_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: RegisterMissionListener_003
+ * @tc.desc: RegisterMissionListener returns invalid parameters when the listener is null
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, RegisterMissionListener_003, TestSize.Level3)
+{
+    DTEST_LOG << "RegisterMissionListener_003 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.Init();
+    sptr<IRemoteObject> nullListener = nullptr;
+    EXPECT_EQ(mgr.RegisterMissionListener(U16DEVICE_ID, nullListener), INVALID_PARAMETERS_ERR);
+    EXPECT_TRUE(mgr.listenDeviceMap_.empty());
+    DTEST_LOG << "RegisterMissionListener_003 end" << std::endl;
+}
+
+/**
+ * @tc.name: RegisterMissionListener_001
+ * @tc.desc: RegisterMissionListener keeps a single entry when the same listener is registered twice
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, RegisterMissionListener_001, TestSize.Level3)
+{
+    DTEST_LOG << "RegisterMissionListener_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.Init();
+    sptr<IRemoteObject> listener = new RemoteMissionListenerTest();
+    EXPECT_EQ(mgr.RegisterMissionListener(U16DEVICE_ID, listener), ERR_NONE);
+    EXPECT_EQ(mgr.RegisterMissionListener(U16DEVICE_ID, listener), ERR_NONE);
+    auto iter = mgr.listenDeviceMap_.find(U16DEVICE_ID);
+    ASSERT_TRUE(iter != mgr.listenDeviceMap_.end());
+    EXPECT_EQ(iter->second.Size(), 1);
+    DTEST_LOG << "RegisterMissionListener_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: RegisterMissionListener_002
+ * @tc.desc: RegisterMissionListener accepts a second listener for the same device
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, RegisterMissionListener_002, TestSize.Level3)
+{
+    DTEST_LOG << "RegisterMissionListener_002 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.Init();
+    sptr<IRemoteObject> firstListener = new RemoteMissionListenerTest();
+    sptr<IRemoteObject> secondListener = new RemoteMissionListenerTest();
+    EXPECT_EQ(mgr.RegisterMissionListener(U16DEVICE_ID, firstListener), ERR_NONE);
+    EXPECT_EQ(mgr.RegisterMissionListener(U16DEVICE_ID, secondListener), ERR_NONE);
+    auto iter = mgr.listenDeviceMap_.find(U16DEVICE_ID);
+    ASSERT_TRUE(iter != mgr.listenDeviceMap_.end());
+    EXPECT_EQ(iter->second.Size(), 2);
+    DTEST_LOG << "RegisterMissionListener_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: UnRegisterMissionListener_001
+ * @tc.desc: UnRegisterMissionListener returns success when the device has no registered listener
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, UnRegisterMissionListener_001, TestSize.Level3)
+{
+    DTEST_LOG << "UnRegisterMissionListener_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.Init();
+    sptr<IRemoteObject> listener = new RemoteMissionListenerTest();
+    EXPECT_EQ(mgr.UnRegisterMissionListener(U16DEVICE_ID, listener), ERR_NONE);
+    EXPECT_TRUE(mgr.listenDeviceMap_.empty());
+    DTEST_LOG << "UnRegisterMissionListener_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: UnRegisterMissionListener_002
+ * @tc.desc: UnRegisterMissionListener keeps the device entry when another listener is unregistered
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, UnRegisterMissionListener_002, TestSize.Level3)
+{
+    DTEST_LOG << "UnRegisterMissionListener_002 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.Init();
+    sptr<IRemoteObject> registeredListener = new RemoteMissionListenerTest();
+    sptr<IRemoteObject> unknownListener = new RemoteMissionListenerTest();
+    EXPECT_EQ(mgr.RegisterMissionListener(U16DEVICE_ID, registeredListener), ERR_NONE);
+    EXPECT_EQ(mgr.UnRegisterMissionListener(U16DEVICE_ID, unknownListener), ERR_NONE);
+    auto iter = mgr.listenDeviceMap_.find(U16DEVICE_ID);
+    ASSERT_TRUE(iter != mgr.listenDeviceMap_.end());
+    EXPECT_EQ(iter->second.Size(), 1);
+    EXPECT_TRUE(iter->second.Find(registeredListener));
+    DTEST_LOG << "UnRegisterMissionListener_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: UnRegisterMissionListener_003
+ * @tc.desc: UnRegisterMissionListener keeps the device entry when one of two listeners is unregistered
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, UnRegisterMissionListener_003, TestSize.Level3)
+{
+    DTEST_LOG << "UnRegisterMissionListener_003 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.Init();
+    sptr<IRemoteObject> firstListener = new RemoteMissionListenerTest();
+    sptr<IRemoteObject> secondListener = new RemoteMissionListenerTest();
+    EXPECT_EQ(mgr.RegisterMissionListener(U16DEVICE_ID, firstListener), ERR_NONE);
+    EXPECT_EQ(mgr.RegisterMissionListener(U16DEVICE_ID, secondListener), ERR_NONE);
+    EXPECT_EQ(mgr.UnRegisterMissionListener(U16DEVICE_ID, firstListener), ERR_NONE);
+    auto iter = mgr.listenDeviceMap_.find(U16DEVICE_ID);
+    ASSERT_TRUE(iter != mgr.listenDeviceMap_.end());
+    EXPECT_EQ(iter->second.Size(), 1);
+    EXPECT_TRUE(iter->second.Find(secondListener));
+    DTEST_LOG << "UnRegisterMissionListener_003 end" << std::endl;
+}
+
+/**
+ * @tc.name: StartSyncRemoteMissions_003
+ * @tc.desc: StartSyncRemoteMissions returns invalid parameters when the device is offline
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, StartSyncRemoteMissions_003, TestSize.Level3)
+{
+    DTEST_LOG << "StartSyncRemoteMissions_003 begin" << std::endl;
+    PrepareMissionUtChannel(false);
+    auto ret = DistributedSchedMissionManager::GetInstance().StartSyncRemoteMissions(DEVICE_ID, false, 0, 0);
+    EXPECT_EQ(ret, INVALID_PARAMETERS_ERR);
+    DTEST_LOG << "StartSyncRemoteMissions_003 end" << std::endl;
+}
+
+/**
+ * @tc.name: StartSyncRemoteMissions_004
+ * @tc.desc: StartSyncRemoteMissions returns invalid parameters when the target device is the local one
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, StartSyncRemoteMissions_004, TestSize.Level3)
+{
+    DTEST_LOG << "StartSyncRemoteMissions_004 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    channel->localDeviceId_ = DEVICE_ID;
+    auto ret = DistributedSchedMissionManager::GetInstance().StartSyncRemoteMissions(DEVICE_ID, false, 0, 0);
+    EXPECT_EQ(ret, INVALID_PARAMETERS_ERR);
+    DTEST_LOG << "StartSyncRemoteMissions_004 end" << std::endl;
+}
+
+/**
+ * @tc.name: StartSyncRemoteMissions_001
+ * @tc.desc: StartSyncRemoteMissions returns success when the device has no registered listener
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, StartSyncRemoteMissions_001, TestSize.Level3)
+{
+    DTEST_LOG << "StartSyncRemoteMissions_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    auto ret = mgr.StartSyncRemoteMissions(DEVICE_ID, false, 0, 0);
+    EXPECT_EQ(ret, ERR_NONE);
+    EXPECT_TRUE(mgr.remoteDmsMap_.empty());
+    DTEST_LOG << "StartSyncRemoteMissions_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: StartSyncRemoteMissions_002
+ * @tc.desc: StartSyncRemoteMissions returns success without connecting when the device was already synced
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, StartSyncRemoteMissions_002, TestSize.Level3)
+{
+    DTEST_LOG << "StartSyncRemoteMissions_002 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.listenDeviceLock_);
+        ListenerInfo listenerInfo;
+        listenerInfo.called = true;
+        mgr.listenDeviceMap_[U16DEVICE_ID] = listenerInfo;
+    }
+    auto ret = mgr.StartSyncRemoteMissions(DEVICE_ID, false, 0, 0);
+    EXPECT_EQ(ret, ERR_NONE);
+    EXPECT_TRUE(mgr.remoteDmsMap_.empty());
+    DTEST_LOG << "StartSyncRemoteMissions_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: StartSyncRemoteMissions_005
+ * @tc.desc: StartSyncRemoteMissions returns invalid parameters when the remote dms is null
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, StartSyncRemoteMissions_005, TestSize.Level3)
+{
+    DTEST_LOG << "StartSyncRemoteMissions_005 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto ret = DistributedSchedMissionManager::GetInstance().StartSyncRemoteMissions(DEVICE_ID,
+        sptr<IDistributedSched>(nullptr), 0);
+    EXPECT_EQ(ret, INVALID_PARAMETERS_ERR);
+    DTEST_LOG << "StartSyncRemoteMissions_005 end" << std::endl;
+}
+
+/**
+ * @tc.name: StartSyncRemoteMissions_006
+ * @tc.desc: StartSyncRemoteMissions returns local device error when the caller info cannot be generated
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, StartSyncRemoteMissions_006, TestSize.Level3)
+{
+    DTEST_LOG << "StartSyncRemoteMissions_006 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    channel->getLocalDeviceIdRet_ = false;
+    auto ret = DistributedSchedMissionManager::GetInstance().StartSyncRemoteMissions(DEVICE_ID,
+        CreateUtMockRemoteDms(), 0);
+    EXPECT_EQ(ret, GET_LOCAL_DEVICE_ERR);
+    DTEST_LOG << "StartSyncRemoteMissions_006 end" << std::endl;
+}
+
+/**
+ * @tc.name: StopSyncRemoteMissions_001
+ * @tc.desc: StopSyncRemoteMissions returns success directly when the device goes offline
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, StopSyncRemoteMissions_001, TestSize.Level3)
+{
+    DTEST_LOG << "StopSyncRemoteMissions_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.RebornMissionCache(DEVICE_ID, CreateUtDstbMissionInfos());
+    EXPECT_EQ(mgr.deviceMissionInfos_.size(), 1u);
+    auto ret = mgr.StopSyncRemoteMissions(DEVICE_ID, true);
+    EXPECT_EQ(ret, ERR_NONE);
+    EXPECT_TRUE(mgr.deviceMissionInfos_.empty());
+    DTEST_LOG << "StopSyncRemoteMissions_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: StopSyncRemoteMissions_002
+ * @tc.desc: StopSyncRemoteMissions returns local device error when the caller info cannot be generated
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, StopSyncRemoteMissions_002, TestSize.Level3)
+{
+    DTEST_LOG << "StopSyncRemoteMissions_002 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.remoteDmsLock_);
+        mgr.remoteDmsMap_[DEVICE_ID] = CreateUtMockRemoteDms();
+    }
+    channel->getLocalDeviceIdRet_ = false;
+    auto ret = mgr.StopSyncRemoteMissions(DEVICE_ID, false);
+    EXPECT_EQ(ret, GET_LOCAL_DEVICE_ERR);
+    DTEST_LOG << "StopSyncRemoteMissions_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: StartSyncMissionsFromRemote_001
+ * @tc.desc: StartSyncMissionsFromRemote skips the listener registration when no handler exists
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, StartSyncMissionsFromRemote_001, TestSize.Level3)
+{
+    DTEST_LOG << "StartSyncMissionsFromRemote_001 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    channel->localMissionInfos_ = CreateUtDstbMissionInfos();
+    CallerInfo callerInfo;
+    callerInfo.sourceDeviceId = DEVICE_ID;
+    std::vector<DstbMissionInfo> missionInfos;
+    auto ret = DistributedSchedMissionManager::GetInstance().StartSyncMissionsFromRemote(callerInfo, missionInfos);
+    EXPECT_EQ(ret, ERR_OK);
+    EXPECT_EQ(missionInfos.size(), UT_CACHED_MISSION_COUNT);
+    EXPECT_EQ(channel->registerCount_.load(), 0);
+    EXPECT_EQ(DistributedSchedMissionManager::GetInstance().remoteSyncDeviceSet_.count(DEVICE_ID), 1u);
+    DTEST_LOG << "StartSyncMissionsFromRemote_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: StartSyncMissionsFromRemote_002
+ * @tc.desc: StartSyncMissionsFromRemote returns invalid parameters when the access control check fails
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, StartSyncMissionsFromRemote_002, TestSize.Level3)
+{
+    DTEST_LOG << "StartSyncMissionsFromRemote_002 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    channel->getLocalDeviceIdRet_ = false;
+    CallerInfo callerInfo;
+    callerInfo.sourceDeviceId = DEVICE_ID;
+    nlohmann::json extraInfoJson;
+    extraInfoJson[Constants::EXTRO_INFO_JSON_KEY_ACCOUNT_ID] = "ut-account-id";
+    extraInfoJson[Constants::EXTRO_INFO_JSON_KEY_USERID_ID] = UT_ACCOUNT_USER_ID;
+    callerInfo.extraInfoJson = extraInfoJson;
+    std::vector<DstbMissionInfo> missionInfos;
+    auto ret = DistributedSchedMissionManager::GetInstance().StartSyncMissionsFromRemote(callerInfo, missionInfos);
+    EXPECT_EQ(ret, INVALID_PARAMETERS_ERR);
+    DTEST_LOG << "StartSyncMissionsFromRemote_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: StartSyncMissionsFromRemote_003
+ * @tc.desc: StartSyncMissionsFromRemote returns the error of GetLocalMissionInfos
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, StartSyncMissionsFromRemote_003, TestSize.Level3)
+{
+    DTEST_LOG << "StartSyncMissionsFromRemote_003 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    channel->getLocalMissionInfosRet_ = INVALID_PARAMETERS_ERR;
+    CallerInfo callerInfo;
+    callerInfo.sourceDeviceId = DEVICE_ID;
+    std::vector<DstbMissionInfo> missionInfos;
+    auto ret = DistributedSchedMissionManager::GetInstance().StartSyncMissionsFromRemote(callerInfo, missionInfos);
+    EXPECT_EQ(ret, INVALID_PARAMETERS_ERR);
+    DTEST_LOG << "StartSyncMissionsFromRemote_003 end" << std::endl;
+}
+
+/**
+ * @tc.name: CheckAccessControlForMissions_001
+ * @tc.desc: CheckAccessControlForMissions returns false when the local device id is unavailable
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, CheckAccessControlForMissions_001, TestSize.Level3)
+{
+    DTEST_LOG << "CheckAccessControlForMissions_001 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    channel->getLocalDeviceIdRet_ = false;
+    CallerInfo callerInfo;
+    callerInfo.sourceDeviceId = DEVICE_ID;
+    EXPECT_FALSE(DistributedSchedMissionManager::GetInstance().CheckAccessControlForMissions(callerInfo));
+    DTEST_LOG << "CheckAccessControlForMissions_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: CheckAccessControlForMissions_002
+ * @tc.desc: CheckAccessControlForMissions ignores account fields with unexpected json types
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, CheckAccessControlForMissions_002, TestSize.Level3)
+{
+    DTEST_LOG << "CheckAccessControlForMissions_002 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    channel->getLocalDeviceIdRet_ = false;
+    CallerInfo callerInfo;
+    callerInfo.sourceDeviceId = DEVICE_ID;
+    nlohmann::json extraInfoJson;
+    extraInfoJson[Constants::EXTRO_INFO_JSON_KEY_ACCOUNT_ID] = UT_ACCOUNT_USER_ID;
+    extraInfoJson[Constants::EXTRO_INFO_JSON_KEY_USERID_ID] = "ut-user-id";
+    callerInfo.extraInfoJson = extraInfoJson;
+    EXPECT_FALSE(DistributedSchedMissionManager::GetInstance().CheckAccessControlForMissions(callerInfo));
+    DTEST_LOG << "CheckAccessControlForMissions_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: StopSyncMissionsFromRemote_002
+ * @tc.desc: StopSyncMissionsFromRemote does nothing when no device is syncing
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, StopSyncMissionsFromRemote_002, TestSize.Level3)
+{
+    DTEST_LOG << "StopSyncMissionsFromRemote_002 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    EXPECT_NO_FATAL_FAILURE(mgr.StopSyncMissionsFromRemote(DEVICE_ID));
+    EXPECT_TRUE(mgr.remoteSyncDeviceSet_.empty());
+    DTEST_LOG << "StopSyncMissionsFromRemote_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: StopSyncMissionsFromRemote_001
+ * @tc.desc: StopSyncMissionsFromRemote only removes the requested device from the sync set
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, StopSyncMissionsFromRemote_001, TestSize.Level3)
+{
+    DTEST_LOG << "StopSyncMissionsFromRemote_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.remoteSyncDeviceLock_);
+        mgr.remoteSyncDeviceSet_.insert(DEVICE_ID);
+        mgr.remoteSyncDeviceSet_.insert(DEVICE_ID_FALSE);
+    }
+    mgr.StopSyncMissionsFromRemote(DEVICE_ID);
+    EXPECT_EQ(mgr.remoteSyncDeviceSet_.size(), 1u);
+    EXPECT_EQ(mgr.remoteSyncDeviceSet_.count(DEVICE_ID_FALSE), 1u);
+    DTEST_LOG << "StopSyncMissionsFromRemote_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: StopSyncMissionsFromRemote_003
+ * @tc.desc: StopSyncMissionsFromRemote clears the sync set without unregistering when no handler exists
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, StopSyncMissionsFromRemote_003, TestSize.Level3)
+{
+    DTEST_LOG << "StopSyncMissionsFromRemote_003 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.isRegMissionChange_ = true;
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.remoteSyncDeviceLock_);
+        mgr.remoteSyncDeviceSet_.insert(DEVICE_ID);
+    }
+    mgr.StopSyncMissionsFromRemote(DEVICE_ID);
+    EXPECT_TRUE(mgr.remoteSyncDeviceSet_.empty());
+    EXPECT_TRUE(mgr.isRegMissionChange_.load());
+    EXPECT_EQ(channel->unregisterCount_.load(), 0);
+    DTEST_LOG << "StopSyncMissionsFromRemote_003 end" << std::endl;
+}
+
+/**
+ * @tc.name: NeedSyncDevice_002
+ * @tc.desc: NeedSyncDevice returns false when deviceId is empty
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, NeedSyncDevice_002, TestSize.Level3)
+{
+    DTEST_LOG << "NeedSyncDevice_002 begin" << std::endl;
+    PrepareMissionUtChannel();
+    EXPECT_FALSE(DistributedSchedMissionManager::GetInstance().NeedSyncDevice(""));
+    DTEST_LOG << "NeedSyncDevice_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: NeedSyncDevice_001
+ * @tc.desc: NeedSyncDevice returns true when the device is syncing
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, NeedSyncDevice_001, TestSize.Level3)
+{
+    DTEST_LOG << "NeedSyncDevice_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.remoteSyncDeviceLock_);
+        mgr.remoteSyncDeviceSet_.insert(DEVICE_ID);
+    }
+    EXPECT_TRUE(mgr.NeedSyncDevice(DEVICE_ID));
+    DTEST_LOG << "NeedSyncDevice_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: HasSyncListener_002
+ * @tc.desc: HasSyncListener returns false when the device has no listener entry
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, HasSyncListener_002, TestSize.Level3)
+{
+    DTEST_LOG << "HasSyncListener_002 begin" << std::endl;
+    PrepareMissionUtChannel();
+    EXPECT_FALSE(DistributedSchedMissionManager::GetInstance().HasSyncListener(DEVICE_ID));
+    DTEST_LOG << "HasSyncListener_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: HasSyncListener_001
+ * @tc.desc: HasSyncListener returns false when the listener was never synced
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, HasSyncListener_001, TestSize.Level3)
+{
+    DTEST_LOG << "HasSyncListener_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.listenDeviceLock_);
+        ListenerInfo listenerInfo;
+        mgr.listenDeviceMap_[U16DEVICE_ID] = listenerInfo;
+    }
+    EXPECT_FALSE(mgr.HasSyncListener(DEVICE_ID));
+    DTEST_LOG << "HasSyncListener_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: NotifySnapshotChanged_002
+ * @tc.desc: NotifySnapshotChanged does nothing when the device has no listener
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, NotifySnapshotChanged_002, TestSize.Level3)
+{
+    DTEST_LOG << "NotifySnapshotChanged_002 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    EXPECT_NO_FATAL_FAILURE(mgr.NotifySnapshotChanged(DEVICE_ID, UT_SNAPSHOT_MISSION_ID_FIRST));
+    EXPECT_TRUE(mgr.listenDeviceMap_.empty());
+    DTEST_LOG << "NotifySnapshotChanged_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: NotifySnapshotChanged_001
+ * @tc.desc: NotifySnapshotChanged skips a null listener
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, NotifySnapshotChanged_001, TestSize.Level3)
+{
+    DTEST_LOG << "NotifySnapshotChanged_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    sptr<IRemoteObject> nullListener = nullptr;
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.listenDeviceLock_);
+        ListenerInfo listenerInfo;
+        listenerInfo.Emplace(nullListener);
+        mgr.listenDeviceMap_[U16DEVICE_ID] = listenerInfo;
+    }
+    EXPECT_NO_FATAL_FAILURE(mgr.NotifySnapshotChanged(DEVICE_ID, UT_SNAPSHOT_MISSION_ID_FIRST));
+    EXPECT_EQ(mgr.listenDeviceMap_.size(), 1u);
+    auto iter = mgr.listenDeviceMap_.find(U16DEVICE_ID);
+    ASSERT_TRUE(iter != mgr.listenDeviceMap_.end());
+    EXPECT_EQ(iter->second.Size(), 1);
+    DTEST_LOG << "NotifySnapshotChanged_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: NotifyNetDisconnectOffline_001
+ * @tc.desc: NotifyNetDisconnectOffline skips null listeners of every device
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, NotifyNetDisconnectOffline_001, TestSize.Level3)
+{
+    DTEST_LOG << "NotifyNetDisconnectOffline_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    sptr<IRemoteObject> nullListener = nullptr;
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.listenDeviceLock_);
+        ListenerInfo firstInfo;
+        firstInfo.Emplace(nullListener);
+        mgr.listenDeviceMap_[U16DEVICE_ID] = firstInfo;
+        ListenerInfo secondInfo;
+        secondInfo.Emplace(nullListener);
+        mgr.listenDeviceMap_[Str8ToStr16(DEVICE_ID_FALSE)] = secondInfo;
+    }
+    EXPECT_NO_FATAL_FAILURE(mgr.NotifyNetDisconnectOffline());
+    EXPECT_EQ(mgr.listenDeviceMap_.size(), 2u);
+    DTEST_LOG << "NotifyNetDisconnectOffline_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: NotifyMissionsChangedFromRemote_001
+ * @tc.desc: NotifyMissionsChangedFromRemote returns invalid parameters when no handler exists
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, NotifyMissionsChangedFromRemote_001, TestSize.Level3)
+{
+    DTEST_LOG << "NotifyMissionsChangedFromRemote_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    sptr<IRemoteObject> nullListener = nullptr;
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.listenDeviceLock_);
+        ListenerInfo listenerInfo;
+        listenerInfo.Emplace(nullListener);
+        mgr.listenDeviceMap_[U16DEVICE_ID] = listenerInfo;
+    }
+    CallerInfo callerInfo;
+    callerInfo.sourceDeviceId = DEVICE_ID;
+    auto ret = mgr.NotifyMissionsChangedFromRemote(callerInfo, CreateUtDstbMissionInfos());
+    EXPECT_EQ(ret, INVALID_PARAMETERS_ERR);
+    EXPECT_EQ(mgr.deviceMissionInfos_.size(), 1u);
+    DTEST_LOG << "NotifyMissionsChangedFromRemote_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: NotifyLocalMissionsChanged_001
+ * @tc.desc: NotifyLocalMissionsChanged returns early when the change handler is unavailable
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, NotifyLocalMissionsChanged_001, TestSize.Level3)
+{
+    DTEST_LOG << "NotifyLocalMissionsChanged_001 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    EXPECT_NO_FATAL_FAILURE(DistributedSchedMissionManager::GetInstance().NotifyLocalMissionsChanged());
+    EXPECT_EQ(channel->localMissionInfosCount_.load(), 0);
+    DTEST_LOG << "NotifyLocalMissionsChanged_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: NotifyMissionSnapshotCreated_001
+ * @tc.desc: NotifyMissionSnapshotCreated returns early when the change handler is unavailable
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, NotifyMissionSnapshotCreated_001, TestSize.Level3)
+{
+    DTEST_LOG << "NotifyMissionSnapshotCreated_001 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    EXPECT_NO_FATAL_FAILURE(DistributedSchedMissionManager::GetInstance().NotifyMissionSnapshotCreated(
+        UT_SNAPSHOT_MISSION_ID_FIRST));
+    EXPECT_EQ(channel->snapshotQueryCount_.load(), 0);
+    DTEST_LOG << "NotifyMissionSnapshotCreated_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: NotifyMissionSnapshotChanged_001
+ * @tc.desc: NotifyMissionSnapshotChanged returns early when the change handler is unavailable
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, NotifyMissionSnapshotChanged_001, TestSize.Level3)
+{
+    DTEST_LOG << "NotifyMissionSnapshotChanged_001 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    EXPECT_NO_FATAL_FAILURE(DistributedSchedMissionManager::GetInstance().NotifyMissionSnapshotChanged(
+        UT_SNAPSHOT_MISSION_ID_FIRST));
+    EXPECT_EQ(channel->snapshotQueryCount_.load(), 0);
+    DTEST_LOG << "NotifyMissionSnapshotChanged_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: NotifyMissionsChangedToRemote_002
+ * @tc.desc: NotifyMissionsChangedToRemote returns success when no device is syncing
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, NotifyMissionsChangedToRemote_002, TestSize.Level3)
+{
+    DTEST_LOG << "NotifyMissionsChangedToRemote_002 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto ret = DistributedSchedMissionManager::GetInstance().NotifyMissionsChangedToRemote(
+        CreateUtDstbMissionInfos());
+    EXPECT_EQ(ret, ERR_NONE);
+    DTEST_LOG << "NotifyMissionsChangedToRemote_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: NotifyMissionsChangedToRemote_003
+ * @tc.desc: NotifyMissionsChangedToRemote returns local device error when the caller info cannot be generated
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, NotifyMissionsChangedToRemote_003, TestSize.Level3)
+{
+    DTEST_LOG << "NotifyMissionsChangedToRemote_003 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    channel->getLocalDeviceIdRet_ = false;
+    auto ret = DistributedSchedMissionManager::GetInstance().NotifyMissionsChangedToRemote(
+        CreateUtDstbMissionInfos());
+    EXPECT_EQ(ret, GET_LOCAL_DEVICE_ERR);
+    DTEST_LOG << "NotifyMissionsChangedToRemote_003 end" << std::endl;
+}
+
+/**
+ * @tc.name: NotifyMissionsChangedToRemote_001
+ * @tc.desc: NotifyMissionsChangedToRemote skips devices whose handler cannot be fetched
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, NotifyMissionsChangedToRemote_001, TestSize.Level3)
+{
+    DTEST_LOG << "NotifyMissionsChangedToRemote_001 begin" << std::endl;
+    PrepareMissionUtChannel(false);
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.remoteSyncDeviceLock_);
+        mgr.remoteSyncDeviceSet_.insert(DEVICE_ID);
+    }
+    auto ret = mgr.NotifyMissionsChangedToRemote(CreateUtDstbMissionInfos());
+    EXPECT_EQ(ret, ERR_NONE);
+    EXPECT_TRUE(mgr.deviceHandle_.empty());
+    DTEST_LOG << "NotifyMissionsChangedToRemote_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: FetchDeviceHandler_001
+ * @tc.desc: FetchDeviceHandler returns nullptr when the device is offline
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, FetchDeviceHandler_001, TestSize.Level3)
+{
+    DTEST_LOG << "FetchDeviceHandler_001 begin" << std::endl;
+    PrepareMissionUtChannel(false);
+    EXPECT_EQ(DistributedSchedMissionManager::GetInstance().FetchDeviceHandler(DEVICE_ID).get(), nullptr);
+    DTEST_LOG << "FetchDeviceHandler_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: FetchDeviceHandler_002
+ * @tc.desc: FetchDeviceHandler returns nullptr when the device uuid is empty
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, FetchDeviceHandler_002, TestSize.Level3)
+{
+    DTEST_LOG << "FetchDeviceHandler_002 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    channel->uuid_.clear();
+    EXPECT_EQ(DistributedSchedMissionManager::GetInstance().FetchDeviceHandler(DEVICE_ID).get(), nullptr);
+    DTEST_LOG << "FetchDeviceHandler_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: GenerateCallerInfo_001
+ * @tc.desc: GenerateCallerInfo returns false when the local device id is unavailable
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, GenerateCallerInfo_001, TestSize.Level3)
+{
+    DTEST_LOG << "GenerateCallerInfo_001 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    channel->getLocalDeviceIdRet_ = false;
+    CallerInfo callerInfo;
+    EXPECT_FALSE(DistributedSchedMissionManager::GetInstance().GenerateCallerInfo(callerInfo));
+    DTEST_LOG << "GenerateCallerInfo_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: OnRemoteDied_001
+ * @tc.desc: OnRemoteDied ignores a remote object that cannot be promoted
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, OnRemoteDied_001, TestSize.Level3)
+{
+    DTEST_LOG << "OnRemoteDied_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    wptr<IRemoteObject> remote = nullptr;
+    EXPECT_NO_FATAL_FAILURE(mgr.OnRemoteDied(remote));
+    EXPECT_TRUE(mgr.listenDeviceMap_.empty());
+    DTEST_LOG << "OnRemoteDied_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: OnMissionListenerDied_001
+ * @tc.desc: OnMissionListenerDied erases the device entry without stopping the sync when not called
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, OnMissionListenerDied_001, TestSize.Level3)
+{
+    DTEST_LOG << "OnMissionListenerDied_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.Init();
+    sptr<IRemoteObject> diedListener = new RemoteMissionListenerTest();
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.listenDeviceLock_);
+        ListenerInfo listenerInfo;
+        listenerInfo.Emplace(diedListener);
+        mgr.listenDeviceMap_[U16DEVICE_ID] = listenerInfo;
+    }
+    mgr.OnMissionListenerDied(diedListener);
+    EXPECT_TRUE(mgr.listenDeviceMap_.empty());
+    EXPECT_TRUE(mgr.remoteDmsMap_.empty());
+    DTEST_LOG << "OnMissionListenerDied_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: OnRemoteDmsDied_002
+ * @tc.desc: OnRemoteDmsDied ignores a remote dms that cannot be promoted
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, OnRemoteDmsDied_002, TestSize.Level3)
+{
+    DTEST_LOG << "OnRemoteDmsDied_002 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    wptr<IRemoteObject> remote = nullptr;
+    EXPECT_NO_FATAL_FAILURE(mgr.OnRemoteDmsDied(remote));
+    EXPECT_TRUE(mgr.remoteDmsMap_.empty());
+    DTEST_LOG << "OnRemoteDmsDied_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: OnRemoteDmsDied_001
+ * @tc.desc: OnRemoteDmsDied does not post the died task when no handler exists
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, OnRemoteDmsDied_001, TestSize.Level3)
+{
+    DTEST_LOG << "OnRemoteDmsDied_001 begin" << std::endl;
+    PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    sptr<IRemoteObject> remoteObject = new MockDistributedSched();
+    wptr<IRemoteObject> remote = remoteObject;
+    EXPECT_NO_FATAL_FAILURE(mgr.OnRemoteDmsDied(remote));
+    EXPECT_TRUE(mgr.remoteDmsMap_.empty());
+    EXPECT_TRUE(mgr.listenDeviceMap_.empty());
+    DTEST_LOG << "OnRemoteDmsDied_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: RetryStartSyncRemoteMissions_001
+ * @tc.desc: RetryStartSyncRemoteMissions does not post the retry task when no handler exists
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, RetryStartSyncRemoteMissions_001, TestSize.Level3)
+{
+    DTEST_LOG << "RetryStartSyncRemoteMissions_001 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    EXPECT_NO_FATAL_FAILURE(DistributedSchedMissionManager::GetInstance().RetryStartSyncRemoteMissions(DEVICE_ID,
+        UT_MISSION_LOCAL_NETWORK_ID, 0));
+    EXPECT_EQ(channel->localDeviceIdCount_.load(), 0);
+    DTEST_LOG << "RetryStartSyncRemoteMissions_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: RetryRegisterMissionChange_001
+ * @tc.desc: RetryRegisterMissionChange does not post the task when the mission change was not registered
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, RetryRegisterMissionChange_001, TestSize.Level3)
+{
+    DTEST_LOG << "RetryRegisterMissionChange_001 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    EXPECT_NO_FATAL_FAILURE(mgr.RetryRegisterMissionChange(0));
+    EXPECT_FALSE(mgr.isRegMissionChange_.load());
+    EXPECT_EQ(channel->registerCount_.load(), 0);
+    DTEST_LOG << "RetryRegisterMissionChange_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: RetryRegisterMissionChange_002
+ * @tc.desc: RetryRegisterMissionChange does not post the task when no handler exists
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, RetryRegisterMissionChange_002, TestSize.Level3)
+{
+    DTEST_LOG << "RetryRegisterMissionChange_002 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.isRegMissionChange_ = true;
+    mgr.RetryRegisterMissionChange(0);
+    EXPECT_EQ(channel->registerCount_.load(), 0);
+    DTEST_LOG << "RetryRegisterMissionChange_002 end" << std::endl;
+}
+
+/**
+ * @tc.name: NotifyDmsProxyProcessDied_001
+ * @tc.desc: NotifyDmsProxyProcessDied does not retry when no handler exists
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, NotifyDmsProxyProcessDied_001, TestSize.Level3)
+{
+    DTEST_LOG << "NotifyDmsProxyProcessDied_001 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.isRegMissionChange_ = true;
+    mgr.NotifyDmsProxyProcessDied();
+    EXPECT_EQ(channel->registerCount_.load(), 0);
+    DTEST_LOG << "NotifyDmsProxyProcessDied_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: OnDnetDied_001
+ * @tc.desc: OnDnetDied does not post the clean task when no handler exists
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, OnDnetDied_001, TestSize.Level3)
+{
+    DTEST_LOG << "OnDnetDied_001 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.isRegMissionChange_ = true;
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.remoteSyncDeviceLock_);
+        mgr.remoteSyncDeviceSet_.insert(DEVICE_ID);
+    }
+    mgr.OnDnetDied();
+    EXPECT_EQ(mgr.remoteSyncDeviceSet_.size(), 1u);
+    EXPECT_EQ(channel->unregisterCount_.load(), 0);
+    DTEST_LOG << "OnDnetDied_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: CleanMissionResources_001
+ * @tc.desc: CleanMissionResources returns early when the device has no listener
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, CleanMissionResources_001, TestSize.Level3)
+{
+    DTEST_LOG << "CleanMissionResources_001 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    mgr.CleanMissionResources(DEVICE_ID);
+    EXPECT_TRUE(mgr.listenDeviceMap_.empty());
+    EXPECT_EQ(channel->uuidQueryCount_.load(), 0);
+    DTEST_LOG << "CleanMissionResources_001 end" << std::endl;
+}
+
+/**
+ * @tc.name: CleanMissionResources_002
+ * @tc.desc: CleanMissionResources erases the device entry with a null listener
+ * @tc.type: FUNC
+ */
+HWTEST_F(DMSMissionManagerTest, CleanMissionResources_002, TestSize.Level3)
+{
+    DTEST_LOG << "CleanMissionResources_002 begin" << std::endl;
+    auto channel = PrepareMissionUtChannel();
+    auto& mgr = DistributedSchedMissionManager::GetInstance();
+    sptr<IRemoteObject> nullListener = nullptr;
+    {
+        std::lock_guard<std::mutex> autoLock(mgr.listenDeviceLock_);
+        ListenerInfo listenerInfo;
+        listenerInfo.Emplace(nullListener);
+        mgr.listenDeviceMap_[U16DEVICE_ID] = listenerInfo;
+    }
+    mgr.CleanMissionResources(DEVICE_ID);
+    EXPECT_TRUE(mgr.listenDeviceMap_.empty());
+    EXPECT_GT(channel->uuidQueryCount_.load(), 0);
+    DTEST_LOG << "CleanMissionResources_002 end" << std::endl;
+}
+
 } // namespace DistributedSchedule
 } // namespace OHOS
